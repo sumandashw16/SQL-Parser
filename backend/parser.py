@@ -77,7 +77,7 @@ class Parser:
         elif tok.type == "DROP":
             stmt = self.parse_drop_table()
         else:
-            raise ParseError(f"Expected a statement (SELECT/INSERT/UPDATE/DELETE/ALTER/SHOW), got {tok.type}")
+            raise ParseError(f"Expected a statement (SELECT/INSERT/UPDATE/DELETE/ALTER/SHOW/DROP), got {tok.type}")
 
         self.match("SEMI")
         if self.current().type != "EOF":
@@ -86,13 +86,29 @@ class Parser:
     # ---- SELECT ----
     def parse_select(self):
         self.expect("SELECT")
-        columns = self.parse_col_list()
+
+        # Peek ahead: if first token is an aggregate function keyword, parse aggregates first.
+        # Otherwise parse the regular column list, then check for a comma + aggregate.
+        # Strategy: parse col list that may be mixed plain cols and agg calls.
+        columns, aggregates = self.parse_select_list()
+
         self.expect("FROM")
         table = self.expect("IDENT").value
 
         where = None
         if self.match("WHERE"):
             where = self.parse_condition()
+
+        group_by = None
+        if self.match("GROUP"):
+            self.expect("BY")
+            group_by = [self.expect("IDENT").value]
+            while self.match("COMMA"):
+                group_by.append(self.expect("IDENT").value)
+
+        having = None
+        if self.match("HAVING"):
+            having = self.parse_condition()
 
         order_by = None
         if self.match("ORDER"):
@@ -110,7 +126,7 @@ class Parser:
             limit_tok = self.expect("NUMBER")
             limit = int(limit_tok.value)
 
-        return {
+        result = {
             "type": "SELECT",
             "table": table,
             "columns": columns,
@@ -118,8 +134,66 @@ class Parser:
             "order_by": order_by,
             "limit": limit,
         }
+        if aggregates:
+            result["aggregates"] = aggregates
+        if group_by:
+            result["group_by"] = group_by
+        if having is not None:
+            result["having"] = having
+        return result
+
+    # Aggregate function keyword token types
+    _AGG_FUNCS = {"COUNT", "SUM", "AVG", "MIN", "MAX"}
+
+    def parse_select_list(self):
+        """
+        Parses a mixed list of plain columns and aggregate calls.
+        Returns (columns, aggregates) where:
+          columns    = list of plain column names (or ["*"] if SELECT *)
+          aggregates = list of {func, field, alias} dicts
+        """
+        # Special case: bare * (SELECT * FROM ...)
+        if self.match("STAR"):
+            return ["*"], []
+
+        columns = []
+        aggregates = []
+
+        while True:
+            tok = self.current()
+
+            if tok.type in self._AGG_FUNCS:
+                # aggregate call: COUNT(field) AS alias
+                func = tok.type  # e.g. "COUNT"
+                self.advance()
+                self.expect("LPAREN")
+                # field inside parens: either IDENT or STAR
+                if self.match("STAR"):
+                    field = "*"
+                else:
+                    field = self.expect("IDENT").value
+                self.expect("RPAREN")
+                # AS alias (optional but strongly expected)
+                alias = f"{func.lower()}_{field}" if field != "*" else "count_all"
+                if self.match("AS"):
+                    alias = self.expect("IDENT").value
+                aggregates.append({"func": func, "field": field, "alias": alias})
+
+            else:
+                # plain column name
+                columns.append(self.expect("IDENT").value)
+
+            if not self.match("COMMA"):
+                break
+
+        # If only aggregates were listed, set columns to ["*"] as placeholder
+        if not columns:
+            columns = ["*"]
+
+        return columns, aggregates
 
     def parse_col_list(self):
+        """Simple column list for INSERT/UPDATE — no aggregates."""
         if self.match("STAR"):
             return ["*"]
         cols = [self.expect("IDENT").value]
@@ -228,10 +302,54 @@ class Parser:
         return {"and": conditions}
 
     def parse_comparison(self):
+        # Leading NOT before the whole expression: NOT score > 90
+        leading_not = bool(self.match("NOT"))
+
         field = self.expect("IDENT").value
+
+        # Post-field NOT (SQL standard: name NOT LIKE / NOT IN / NOT BETWEEN)
+        postfield_not = bool(self.match("NOT"))
+        negate = leading_not or postfield_not
+
+        # IS [NOT] NULL
+        if self.match("IS"):
+            is_not = bool(self.match("NOT"))
+            self.expect("NULL")
+            op = "IS_NOT_NULL" if is_not else "IS_NULL"
+            cond = {"field": field, "op": op}
+            return {"not": cond} if negate else cond
+
+        # LIKE
+        if self.match("LIKE"):
+            pattern = self.expect("STRING").value
+            cond = {"field": field, "op": "LIKE", "value": pattern}
+            return {"not": cond} if negate else cond
+
+        # IN (val, val, ...)
+        if self.match("IN"):
+            self.expect("LPAREN")
+            values = [self.parse_literal()]
+            while self.match("COMMA"):
+                values.append(self.parse_literal())
+            self.expect("RPAREN")
+            cond = {"field": field, "op": "IN", "values": values}
+            return {"not": cond} if negate else cond
+
+        # BETWEEN low AND high
+        if self.match("BETWEEN"):
+            low = self.parse_literal()
+            self.expect("AND")
+            high = self.parse_literal()
+            cond = {"field": field, "op": "BETWEEN", "low": low, "high": high}
+            return {"not": cond} if negate else cond
+
+        # Standard comparison  (=, !=, >, <, >=, <=)
         op_tok = self.expect("OP")
         value = self.parse_literal()
-        return {"field": field, "op": op_tok.value, "value": value}
+        cond = {"field": field, "op": op_tok.value, "value": value}
+        return {"not": cond} if negate else cond
+
+
 
     def parse_literal(self):
         tok = self.current()

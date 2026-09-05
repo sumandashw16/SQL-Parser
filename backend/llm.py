@@ -8,6 +8,7 @@ before anything runs.
 import db
 import json
 import re
+# pyrefly: ignore [missing-import]
 from google import genai
 import config
 from ast_nodes import validate_ast, ASTValidationError
@@ -59,11 +60,30 @@ DROP_TABLE (deletes an entire table, not just rows):
 {{"type": "DROP_TABLE", "table": "panihouse"}}
 
 A <condition> is one of:
-  {{"field": "score", "op": ">", "value": 80}}
-  {{"and": [<condition>, <condition>, ...]}}
-  {{"or": [<condition>, <condition>, ...]}}
 
-Valid ops: = != > < >= <=
+  Standard comparison:
+  {{"field": "score", "op": ">", "value": 80}}
+  Valid ops: = != > < >= <=
+
+  LIKE  (use % as wildcard):
+  {{"field": "name", "op": "LIKE", "value": "%ali%"}}
+
+  IN  (match any value in a list):
+  {{"field": "subject", "op": "IN", "values": ["Math", "Science"]}}
+
+  BETWEEN  (inclusive range):
+  {{"field": "score", "op": "BETWEEN", "low": 50, "high": 90}}
+
+  IS NULL / IS NOT NULL:
+  {{"field": "email", "op": "IS_NULL"}}
+  {{"field": "email", "op": "IS_NOT_NULL"}}
+
+  NOT  (negate any condition):
+  {{"not": <condition>}}
+
+  AND / OR combinators:
+  {{"and": [<condition>, <condition>, ...]}}
+  {{"or":  [<condition>, <condition>, ...]}}
 
 An <order> looks like:
   {{"field": "score", "order": "desc"}}
@@ -80,6 +100,11 @@ Rules:
 - Output ONLY the JSON object. Nothing before or after it.
 - Only generate SELECT, INSERT, UPDATE, DELETE, CREATE_TABLE, ALTER_TABLE, SHOW_TABLES, or DROP_TABLE. Never anything else.
 - If the question asks to delete/drop/remove an entire TABLE (not rows), use DROP_TABLE, never DELETE. DELETE only removes rows from within a table.
+- When the question uses words like "average", "total", "count", "sum", "minimum", "maximum", or "per group", use aggregates with the "aggregates" field.
+- For aggregate queries that group by a column: put that column in both "columns" AND "group_by". Never put a non-aggregate column in "columns" without also adding it to "group_by" — MySQL will reject it.
+- Use "having" (not "where") to filter on aggregate results (e.g. "groups where average score > 70").
+- "field": "*" is only valid inside COUNT. All other functions (SUM, AVG, MIN, MAX) must reference a real column name.
+- If no grouping is needed (e.g. just "count all rows"), omit "group_by" and use "columns": ["*"].
 
 Examples:
 English: show me students who scored above 80
@@ -109,14 +134,38 @@ JSON: {{"type": "ALTER_TABLE", "table": "teachers", "action": "MODIFY_COLUMN", "
 English: show me all the tables
 JSON: {{"type": "SHOW_TABLES"}}
 
-English: show me all the tables
-JSON: {{"type": "SHOW_TABLES"}}
-
 English: delete the table called panihouse
 JSON: {{"type": "DROP_TABLE", "table": "panihouse"}}
 
 English: drop the wardens table
 JSON: {{"type": "DROP_TABLE", "table": "wardens"}}
+
+English: find students whose name contains 'ali'
+JSON: {{"type": "SELECT", "table": "students", "columns": ["*"], "where": {{"field": "name", "op": "LIKE", "value": "%ali%"}}, "order_by": null, "limit": null}}
+
+English: show students in Math or Science
+JSON: {{"type": "SELECT", "table": "students", "columns": ["*"], "where": {{"field": "subject", "op": "IN", "values": ["Math", "Science"]}}, "order_by": null, "limit": null}}
+
+English: students with score between 60 and 90
+JSON: {{"type": "SELECT", "table": "students", "columns": ["*"], "where": {{"field": "score", "op": "BETWEEN", "low": 60, "high": 90}}, "order_by": null, "limit": null}}
+
+English: students with no email address
+JSON: {{"type": "SELECT", "table": "students", "columns": ["*"], "where": {{"field": "email", "op": "IS_NULL"}}, "order_by": null, "limit": null}}
+
+English: students who have an email address
+JSON: {{"type": "SELECT", "table": "students", "columns": ["*"], "where": {{"field": "email", "op": "IS_NOT_NULL"}}, "order_by": null, "limit": null}}
+
+English: average score per subject
+JSON: {{"type": "SELECT", "table": "students", "columns": ["subject"], "aggregates": [{{"func": "AVG", "field": "score", "alias": "avg_score"}}], "where": null, "group_by": ["subject"], "having": null, "order_by": null, "limit": null}}
+
+English: how many students are in each subject
+JSON: {{"type": "SELECT", "table": "students", "columns": ["subject"], "aggregates": [{{"func": "COUNT", "field": "*", "alias": "total"}}], "where": null, "group_by": ["subject"], "having": null, "order_by": null, "limit": null}}
+
+English: subjects where the average score is above 70
+JSON: {{"type": "SELECT", "table": "students", "columns": ["subject"], "aggregates": [{{"func": "AVG", "field": "score", "alias": "avg_score"}}], "where": null, "group_by": ["subject"], "having": {{"field": "avg_score", "op": ">", "value": 70}}, "order_by": null, "limit": null}}
+
+English: total number of students
+JSON: {{"type": "SELECT", "table": "students", "columns": ["*"], "aggregates": [{{"func": "COUNT", "field": "*", "alias": "total"}}], "where": null, "group_by": null, "having": null, "order_by": null, "limit": null}}
 """
 
 

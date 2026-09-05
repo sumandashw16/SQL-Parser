@@ -12,6 +12,12 @@ def _build_where(where):
     if where is None:
         return "", []
 
+    # NOT wrapper
+    if "not" in where:
+        frag, params = _build_where(where["not"])
+        return f"NOT ({frag})", params
+
+    # AND / OR combinators
     if "and" in where or "or" in where:
         key = "and" if "and" in where else "or"
         parts = []
@@ -23,11 +29,29 @@ def _build_where(where):
         joiner = " AND " if key == "and" else " OR "
         return joiner.join(parts), params
 
-    # leaf condition
+    # Leaf condition
     field = where["field"]
-    op = where["op"]
-    value = where["value"]
-    return f"{field} {op} %s", [value]
+    op    = where["op"]
+
+    if op == "IS_NULL":
+        return f"{field} IS NULL", []
+
+    if op == "IS_NOT_NULL":
+        return f"{field} IS NOT NULL", []
+
+    if op == "LIKE":
+        return f"{field} LIKE %s", [where["value"]]
+
+    if op == "IN":
+        placeholders = ", ".join(["%s"] * len(where["values"]))
+        return f"{field} IN ({placeholders})", list(where["values"])
+
+    if op == "BETWEEN":
+        return f"{field} BETWEEN %s AND %s", [where["low"], where["high"]]
+
+    # Standard comparison (=, !=, >, <, >=, <=)
+    return f"{field} {op} %s", [where["value"]]
+
 
 
 def ast_to_sql(ast):
@@ -77,25 +101,61 @@ def ast_to_sql(ast):
 
     elif stmt_type == "SELECT":
         cols = ast["columns"]
-        col_str = "*" if cols == ["*"] else ", ".join(cols)
+        aggregates = ast.get("aggregates") or []
+
+        # Build the SELECT list
+        select_parts = []
+
+        # Non-aggregate columns (omit if the only column is "*" and there are aggregates)
+        if not (cols == ["*"] and aggregates):
+            select_parts += cols if cols != ["*"] else ["*"]
+
+        # Aggregate expressions: AVG(score) AS avg_score
+        for agg in aggregates:
+            field_expr = agg["field"]  # could be "*" for COUNT(*)
+            expr = f"{agg['func']}({field_expr}) AS {agg['alias']}"
+            select_parts.append(expr)
+
+        col_str = ", ".join(select_parts) if select_parts else "*"
         sql = f"SELECT {col_str} FROM {table}"
         params = []
 
+        # WHERE (filters before grouping)
         where = ast.get("where")
         if where is not None:
             frag, where_params = _build_where(where)
             sql += f" WHERE {frag}"
             params.extend(where_params)
 
+        # GROUP BY
+        # Safety net: if aggregates are present and columns has real field names (not "*"),
+        # those columns MUST be in GROUP BY (MySQL only_full_group_by will reject otherwise).
+        # Auto-infer group_by from columns when the LLM forgets to include it.
+        group_by = ast.get("group_by")
+        if aggregates and not group_by and cols != ["*"]:
+            group_by = cols  # infer from the non-aggregate column list
+        if group_by:
+            sql += f" GROUP BY {', '.join(group_by)}"
+
+        # HAVING (filters after grouping — same condition system as WHERE)
+        having = ast.get("having")
+        if having is not None:
+            frag, having_params = _build_where(having)
+            sql += f" HAVING {frag}"
+            params.extend(having_params)
+
+        # ORDER BY
         order_by = ast.get("order_by")
         if order_by is not None:
             sql += f" ORDER BY {order_by['field']} {order_by.get('order', 'asc').upper()}"
 
+        # LIMIT
         limit = ast.get("limit")
         if limit is not None:
             sql += f" LIMIT {int(limit)}"
 
         return sql, tuple(params)
+
 
     elif stmt_type == "INSERT":
         rows = ast["values"]

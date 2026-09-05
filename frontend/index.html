@@ -18,6 +18,9 @@
     <main class="main">
       <section class="query-panel">
         <textarea id="query-input" placeholder="e.g. show me the top 5 students who scored above 80"></textarea>
+        <div class="query-hint">
+          <span><kbd>Enter</kbd> to run &nbsp;·&nbsp; <kbd>Ctrl+Enter</kbd> or <kbd>Shift+Enter</kbd> for new line &nbsp;·&nbsp; <kbd>↑</kbd> <kbd>↓</kbd> to browse history</span>
+        </div>
         <button id="run-btn">Run</button>
         <div id="status" class="status"></div>
         <div id="generated-sql" class="generated-sql"></div>
@@ -27,6 +30,14 @@
         <div id="results-container">
           <p class="placeholder">Results will appear here.</p>
         </div>
+      </section>
+
+      <section class="history-panel">
+        <div class="history-header">
+          <span class="history-title">⏱ Query History</span>
+          <button id="clear-history-btn" class="clear-btn" title="Clear history">Clear</button>
+        </div>
+        <ul id="history-list" class="history-list"></ul>
       </section>
     </main>
   </div>

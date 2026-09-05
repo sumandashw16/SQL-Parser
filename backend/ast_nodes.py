@@ -6,7 +6,7 @@ NL parser (llm.py) must produce dicts matching these shapes.
 The executor only ever consumes this schema.
 
 ---------------------------------------------------------------------
-SELECT
+SELECT (plain)
 {
   "type": "SELECT",
   "table": "students",
@@ -15,6 +15,25 @@ SELECT
   "order_by": {"field": "score", "order": "asc"|"desc"} | None,
   "limit": int | None
 }
+
+SELECT with aggregates
+{
+  "type": "SELECT",
+  "table": "students",
+  "columns": ["subject"],          # non-aggregate columns (GROUP BY columns)
+  "aggregates": [                   # optional; omit or [] for plain SELECT
+    {"func": "AVG", "field": "score",  "alias": "avg_score"},
+    {"func": "COUNT", "field": "*",   "alias": "total"}
+  ],
+  "where": <condition> | None,     # filter BEFORE grouping
+  "group_by": ["subject"],          # optional list of fields
+  "having": <condition> | None,    # filter AFTER grouping (same shape as where)
+  "order_by": {"field": "avg_score", "order": "desc"} | None,
+  "limit": int | None
+}
+
+Valid aggregate functions: COUNT, SUM, AVG, MIN, MAX
+Use field="*" only with COUNT.
 
 INSERT
 {
@@ -65,6 +84,12 @@ ALTER_TABLE (four possible actions)
 
 <condition> is one of:
   {"field": "score", "op": "=" | "!=" | ">" | "<" | ">=" | "<=", "value": <literal>}
+  {"field": "name",  "op": "LIKE",    "value": "%ali%"}
+  {"field": "id",    "op": "IN",      "values": [1, 2, 3]}
+  {"field": "score", "op": "BETWEEN", "low": 50, "high": 90}
+  {"field": "email", "op": "IS_NULL"}
+  {"field": "email", "op": "IS_NOT_NULL"}
+  {"not": <condition>}
   {"and": [<condition>, <condition>, ...]}
   {"or":  [<condition>, <condition>, ...]}
 ---------------------------------------------------------------------
@@ -72,6 +97,7 @@ ALTER_TABLE (four possible actions)
 
 VALID_DTYPES = {"int", "float", "string", "bool"}
 VALID_OPS = {"=", "!=", ">", "<", ">=", "<="}
+VALID_AGG_FUNCS = {"COUNT", "SUM", "AVG", "MIN", "MAX"}
 VALID_STMT_TYPES = {"SELECT", "INSERT", "UPDATE", "DELETE", "CREATE_TABLE", "ALTER_TABLE", "SHOW_TABLES", "DROP_TABLE"}
 VALID_ALTER_ACTIONS = {"ADD_COLUMN", "DROP_COLUMN", "RENAME_COLUMN", "MODIFY_COLUMN"}
 
@@ -88,6 +114,14 @@ def validate_condition(cond, path="where"):
     if not isinstance(cond, dict):
         _fail(f"{path}: condition must be an object, got {type(cond).__name__}")
 
+    # NOT wrapper
+    if "not" in cond:
+        if len(cond) != 1:
+            _fail(f"{path}.not: object must only contain 'not'")
+        validate_condition(cond["not"], path=f"{path}.not")
+        return
+
+    # AND / OR combinators
     if "and" in cond or "or" in cond:
         key = "and" if "and" in cond else "or"
         if len(cond) != 1:
@@ -99,13 +133,37 @@ def validate_condition(cond, path="where"):
             validate_condition(sub, path=f"{path}.{key}[{i}]")
         return
 
-    for required in ("field", "op", "value"):
-        if required not in cond:
-            _fail(f"{path}: leaf condition missing '{required}'")
-    if cond["op"] not in VALID_OPS:
-        _fail(f"{path}: invalid op '{cond['op']}', must be one of {VALID_OPS}")
-    if not isinstance(cond["field"], str):
-        _fail(f"{path}: 'field' must be a string")
+    # All leaf conditions require "field" and "op"
+    if "field" not in cond or not isinstance(cond["field"], str):
+        _fail(f"{path}: leaf condition must have a string 'field'")
+    if "op" not in cond:
+        _fail(f"{path}: leaf condition missing 'op'")
+
+    op = cond["op"]
+
+    if op in VALID_OPS:
+        # standard comparison: requires "value"
+        if "value" not in cond:
+            _fail(f"{path}: op '{op}' requires a 'value'")
+
+    elif op == "LIKE":
+        if "value" not in cond or not isinstance(cond["value"], str):
+            _fail(f"{path}: LIKE requires a string 'value' (the pattern)")
+
+    elif op == "IN":
+        vals = cond.get("values")
+        if not isinstance(vals, list) or len(vals) == 0:
+            _fail(f"{path}: IN requires a non-empty 'values' list")
+
+    elif op == "BETWEEN":
+        if "low" not in cond or "high" not in cond:
+            _fail(f"{path}: BETWEEN requires 'low' and 'high'")
+
+    elif op in ("IS_NULL", "IS_NOT_NULL"):
+        pass  # only needs "field"
+
+    else:
+        _fail(f"{path}: invalid op '{op}', must be one of {VALID_OPS | {'LIKE','IN','BETWEEN','IS_NULL','IS_NOT_NULL'}}")
 
 
 def validate_ast(ast):
@@ -179,6 +237,36 @@ def validate_ast(ast):
             cols = ast.get("columns")
             if not isinstance(cols, list) or len(cols) == 0:
                 _fail("SELECT: 'columns' must be a non-empty list (use ['*'] for all)")
+
+            # Aggregates (optional)
+            aggregates = ast.get("aggregates")
+            if aggregates is not None:
+                if not isinstance(aggregates, list):
+                    _fail("SELECT.aggregates: must be a list")
+                for i, agg in enumerate(aggregates):
+                    if not isinstance(agg, dict):
+                        _fail(f"SELECT.aggregates[{i}]: must be an object")
+                    if agg.get("func") not in VALID_AGG_FUNCS:
+                        _fail(f"SELECT.aggregates[{i}]: 'func' must be one of {VALID_AGG_FUNCS}")
+                    if "field" not in agg or not isinstance(agg["field"], str):
+                        _fail(f"SELECT.aggregates[{i}]: 'field' must be a string (use '*' for COUNT(*))")
+                    if "alias" not in agg or not isinstance(agg["alias"], str):
+                        _fail(f"SELECT.aggregates[{i}]: 'alias' must be a non-empty string")
+
+            # GROUP BY (optional, but required if aggregates are present)
+            group_by = ast.get("group_by")
+            if group_by is not None:
+                if not isinstance(group_by, list) or len(group_by) == 0:
+                    _fail("SELECT.group_by: must be a non-empty list of field names")
+                for i, f in enumerate(group_by):
+                    if not isinstance(f, str) or not f:
+                        _fail(f"SELECT.group_by[{i}]: must be a non-empty string")
+
+            # HAVING (optional condition applied after GROUP BY)
+            having = ast.get("having")
+            if having is not None:
+                validate_condition(having, path="having")
+
             where = ast.get("where")
             if where is not None:
                 validate_condition(where)
@@ -205,7 +293,4 @@ def validate_ast(ast):
             where = ast.get("where")
             if where is not None:
                 validate_condition(where)
-    if stmt_type == "SHOW_TABLES":
-        return "SHOW TABLES", ()
-
     return True
