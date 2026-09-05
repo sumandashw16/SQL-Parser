@@ -1,0 +1,13 @@
+# Virtual environment
+backend/venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Config with secrets
+backend/config.py
+
+# OS/editor junk
+.DS_Store
+.vscode/
