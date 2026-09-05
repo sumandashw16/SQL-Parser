@@ -58,3 +58,31 @@ def test_connection():
         return True, "Connected successfully"
     except Error as e:
         return False, str(e)
+
+def get_live_schema():
+    """
+    Queries MySQL itself for all tables and their columns in the current database.
+    Returns a human-readable string describing the schema, used to keep the
+    LLM's knowledge in sync with tables that were created after the app started
+    (including ones created via CREATE_TABLE through this same app).
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SHOW TABLES")
+        tables = [row[0] for row in cursor.fetchall()]
+
+        schema_lines = []
+        for table in tables:
+            cursor.execute(f"DESCRIBE {table}")
+            columns = cursor.fetchall()  # each row: (Field, Type, Null, Key, Default, Extra)
+            schema_lines.append(f"Table: {table}")
+            for col in columns:
+                field_name, sql_type = col[0], col[1]
+                schema_lines.append(f"  - {field_name} ({sql_type})")
+            schema_lines.append("")  # blank line between tables
+
+        cursor.close()
+        return "\n".join(schema_lines)
+    finally:
+        conn.close()

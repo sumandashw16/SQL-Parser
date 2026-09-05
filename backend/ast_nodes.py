@@ -20,7 +20,7 @@ INSERT
 {
   "type": "INSERT",
   "table": "students",
-  "values": {"name": "Asha", "score": 88.5, "subject": "Math"}
+  "values": [{"name": "Asha", "score": 88.5, "subject": "Math"}, ...]
 }
 
 UPDATE
@@ -38,6 +38,31 @@ DELETE
   "where": <condition> | None
 }
 
+CREATE_TABLE
+{
+  "type": "CREATE_TABLE",
+  "table": "teachers",
+  "columns": [{"name": "name", "dtype": "string"}, ...]
+}
+
+ALTER_TABLE (four possible actions)
+{
+  "type": "ALTER_TABLE", "table": "teachers", "action": "ADD_COLUMN",
+  "column": {"name": "email", "dtype": "string"}
+}
+{
+  "type": "ALTER_TABLE", "table": "teachers", "action": "DROP_COLUMN",
+  "column_name": "email"
+}
+{
+  "type": "ALTER_TABLE", "table": "teachers", "action": "RENAME_COLUMN",
+  "old_name": "dept", "new_name": "department"
+}
+{
+  "type": "ALTER_TABLE", "table": "teachers", "action": "MODIFY_COLUMN",
+  "column": {"name": "age", "dtype": "float"}
+}
+
 <condition> is one of:
   {"field": "score", "op": "=" | "!=" | ">" | "<" | ">=" | "<=", "value": <literal>}
   {"and": [<condition>, <condition>, ...]}
@@ -47,7 +72,9 @@ DELETE
 
 VALID_DTYPES = {"int", "float", "string", "bool"}
 VALID_OPS = {"=", "!=", ">", "<", ">=", "<="}
-VALID_STMT_TYPES = {"SELECT", "INSERT", "UPDATE", "DELETE", "CREATE_TABLE"}
+VALID_STMT_TYPES = {"SELECT", "INSERT", "UPDATE", "DELETE", "CREATE_TABLE", "ALTER_TABLE"}
+VALID_ALTER_ACTIONS = {"ADD_COLUMN", "DROP_COLUMN", "RENAME_COLUMN", "MODIFY_COLUMN"}
+
 
 class ASTValidationError(Exception):
     pass
@@ -92,32 +119,61 @@ def validate_ast(ast):
     if "table" not in ast or not isinstance(ast["table"], str) or not ast["table"]:
         _fail(f"{stmt_type}: 'table' must be a non-empty string")
 
-        if stmt_type == "CREATE_TABLE":
-            cols = ast.get("columns")
-            if not isinstance(cols, list) or len(cols) == 0:
-                _fail("CREATE_TABLE: 'columns' must be a non-empty list")
-            seen = set()
-            for i, col in enumerate(cols):
-                if not isinstance(col, dict) or "name" not in col or "dtype" not in col:
-                    _fail(f"CREATE_TABLE.columns[{i}]: must have 'name' and 'dtype'")
-                if col["dtype"] not in VALID_DTYPES:
-                    _fail(f"CREATE_TABLE.columns[{i}]: invalid dtype '{col['dtype']}', must be one of {VALID_DTYPES}")
-                if col["name"] in seen:
-                    _fail(f"CREATE_TABLE.columns[{i}]: duplicate column name '{col['name']}'")
-                seen.add(col["name"])
-    
-        elif stmt_type == "INSERT":
-            rows = ast.get("values")
-            if not isinstance(rows, list) or len(rows) == 0:
-                _fail("INSERT: 'values' must be a non-empty list of row objects")
-            first_keys = None
-            for i, row in enumerate(rows):
-                if not isinstance(row, dict) or len(row) == 0:
-                    _fail(f"INSERT.values[{i}]: each row must be a non-empty object")
-                if first_keys is None:
-                    first_keys = set(row.keys())
-                elif set(row.keys()) != first_keys:
-                    _fail(f"INSERT.values[{i}]: all rows must have the same columns as row 0")
+    if stmt_type == "CREATE_TABLE":
+        cols = ast.get("columns")
+        if not isinstance(cols, list) or len(cols) == 0:
+            _fail("CREATE_TABLE: 'columns' must be a non-empty list")
+        seen = set()
+        for i, col in enumerate(cols):
+            if not isinstance(col, dict) or "name" not in col or "dtype" not in col:
+                _fail(f"CREATE_TABLE.columns[{i}]: must have 'name' and 'dtype'")
+            if col["dtype"] not in VALID_DTYPES:
+                _fail(f"CREATE_TABLE.columns[{i}]: invalid dtype '{col['dtype']}', must be one of {VALID_DTYPES}")
+            if col["name"] in seen:
+                _fail(f"CREATE_TABLE.columns[{i}]: duplicate column name '{col['name']}'")
+            seen.add(col["name"])
+
+    elif stmt_type == "ALTER_TABLE":
+        action = ast.get("action")
+        if action not in VALID_ALTER_ACTIONS:
+            _fail(f"ALTER_TABLE: invalid action '{action}', must be one of {VALID_ALTER_ACTIONS}")
+
+        if action == "ADD_COLUMN":
+            col = ast.get("column")
+            if not isinstance(col, dict) or "name" not in col or "dtype" not in col:
+                _fail("ALTER_TABLE.ADD_COLUMN: 'column' must have 'name' and 'dtype'")
+            if col["dtype"] not in VALID_DTYPES:
+                _fail(f"ALTER_TABLE.ADD_COLUMN: invalid dtype '{col['dtype']}', must be one of {VALID_DTYPES}")
+
+        elif action == "DROP_COLUMN":
+            if not isinstance(ast.get("column_name"), str) or not ast["column_name"]:
+                _fail("ALTER_TABLE.DROP_COLUMN: 'column_name' must be a non-empty string")
+
+        elif action == "RENAME_COLUMN":
+            if not isinstance(ast.get("old_name"), str) or not ast["old_name"]:
+                _fail("ALTER_TABLE.RENAME_COLUMN: 'old_name' must be a non-empty string")
+            if not isinstance(ast.get("new_name"), str) or not ast["new_name"]:
+                _fail("ALTER_TABLE.RENAME_COLUMN: 'new_name' must be a non-empty string")
+
+        elif action == "MODIFY_COLUMN":
+            col = ast.get("column")
+            if not isinstance(col, dict) or "name" not in col or "dtype" not in col:
+                _fail("ALTER_TABLE.MODIFY_COLUMN: 'column' must have 'name' and 'dtype'")
+            if col["dtype"] not in VALID_DTYPES:
+                _fail(f"ALTER_TABLE.MODIFY_COLUMN: invalid dtype '{col['dtype']}', must be one of {VALID_DTYPES}")
+
+    elif stmt_type == "INSERT":
+        rows = ast.get("values")
+        if not isinstance(rows, list) or len(rows) == 0:
+            _fail("INSERT: 'values' must be a non-empty list of row objects")
+        first_keys = None
+        for i, row in enumerate(rows):
+            if not isinstance(row, dict) or len(row) == 0:
+                _fail(f"INSERT.values[{i}]: each row must be a non-empty object")
+            if first_keys is None:
+                first_keys = set(row.keys())
+            elif set(row.keys()) != first_keys:
+                _fail(f"INSERT.values[{i}]: all rows must have the same columns as row 0")
 
     elif stmt_type == "SELECT":
         cols = ast.get("columns")

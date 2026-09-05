@@ -44,6 +44,28 @@ def ast_to_sql(ast):
         sql = f"CREATE TABLE {table} ({col_defs})"
         return sql, ()
 
+    elif stmt_type == "ALTER_TABLE":
+        action = ast["action"]
+
+        if action == "ADD_COLUMN":
+            col = ast["column"]
+            sql = f"ALTER TABLE {table} ADD COLUMN {col['name']} {DTYPE_TO_SQL[col['dtype']]}"
+            return sql, ()
+
+        elif action == "DROP_COLUMN":
+            sql = f"ALTER TABLE {table} DROP COLUMN {ast['column_name']}"
+            return sql, ()
+
+        elif action == "RENAME_COLUMN":
+            # MySQL 8.0+ supports RENAME COLUMN directly
+            sql = f"ALTER TABLE {table} RENAME COLUMN {ast['old_name']} TO {ast['new_name']}"
+            return sql, ()
+
+        elif action == "MODIFY_COLUMN":
+            col = ast["column"]
+            sql = f"ALTER TABLE {table} MODIFY COLUMN {col['name']} {DTYPE_TO_SQL[col['dtype']]}"
+            return sql, ()
+        
     if stmt_type == "SELECT":
         cols = ast["columns"]
         col_str = "*" if cols == ["*"] else ", ".join(cols)

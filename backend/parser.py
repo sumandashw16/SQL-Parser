@@ -70,13 +70,10 @@ class Parser:
             stmt = self.parse_update()
         elif tok.type == "DELETE":
             stmt = self.parse_delete()
+        elif tok.type == "ALTER":
+            stmt = self.parse_alter()
         else:
-            raise ParseError(f"Expected a statement (SELECT/INSERT/UPDATE/DELETE), got {tok.type}")
-
-        self.match("SEMI")
-        if self.current().type != "EOF":
-            raise ParseError(f"Unexpected token after statement: {self.current().type}")
-        return stmt
+            raise ParseError(f"Expected a statement (SELECT/INSERT/UPDATE/DELETE/ALTER), got {tok.type}")
 
     # ---- SELECT ----
     def parse_select(self):
@@ -238,7 +235,66 @@ class Parser:
             return tok.value
         else:
             raise ParseError(f"Expected a literal (number or string), got {tok.type}")
+    # ---- ALTER TABLE ----
+    def parse_alter(self):
+        self.expect("ALTER")
+        self.expect("TABLE")
+        table = self.expect("IDENT").value
 
+        if self.match("ADD"):
+            self.match("COLUMN")  # optional keyword
+            col_name = self.expect("IDENT").value
+            dtype = self.parse_dtype()
+            return {
+                "type": "ALTER_TABLE",
+                "table": table,
+                "action": "ADD_COLUMN",
+                "column": {"name": col_name, "dtype": dtype},
+            }
+
+        elif self.match("DROP"):
+            self.match("COLUMN")  # optional keyword
+            col_name = self.expect("IDENT").value
+            return {
+                "type": "ALTER_TABLE",
+                "table": table,
+                "action": "DROP_COLUMN",
+                "column_name": col_name,
+            }
+
+        elif self.match("RENAME"):
+            self.match("COLUMN")  # optional keyword
+            old_name = self.expect("IDENT").value
+            self.expect("TO")
+            new_name = self.expect("IDENT").value
+            return {
+                "type": "ALTER_TABLE",
+                "table": table,
+                "action": "RENAME_COLUMN",
+                "old_name": old_name,
+                "new_name": new_name,
+            }
+
+        elif self.match("MODIFY"):
+            self.match("COLUMN")  # optional keyword
+            col_name = self.expect("IDENT").value
+            dtype = self.parse_dtype()
+            return {
+                "type": "ALTER_TABLE",
+                "table": table,
+                "action": "MODIFY_COLUMN",
+                "column": {"name": col_name, "dtype": dtype},
+            }
+
+        else:
+            raise ParseError(f"Expected ADD/DROP/RENAME/MODIFY after ALTER TABLE {table}, got {self.current().type}")
+
+    def parse_dtype(self):
+        tok = self.current()
+        if tok.type in ("INT", "FLOAT", "STRING", "BOOL"):
+            self.advance()
+            return tok.type.lower()
+        raise ParseError(f"Expected a data type (INT/FLOAT/STRING/BOOL), got {tok.type}")
 
 def parse_sql(sql_text):
     """Convenience entry point: raw SQL text -> AST dict."""

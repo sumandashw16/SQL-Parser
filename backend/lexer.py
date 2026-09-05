@@ -10,7 +10,9 @@ import re
 KEYWORDS = {
     "SELECT", "FROM", "WHERE", "ORDER", "BY", "ASC", "DESC", "LIMIT",
     "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
-    "AND", "OR", "NULL"
+    "AND", "OR", "NULL",
+    "ALTER", "TABLE", "ADD", "COLUMN", "DROP", "RENAME", "TO", "MODIFY",
+    "INT", "FLOAT", "STRING", "BOOL"
 }
 
 # Order matters: longer operators must be checked before shorter ones (>= before >)
