@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MySQL-Lite Workbench</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <h1>MySQL-Lite Workbench</h1>
+      <div class="mode-toggle">
+        <button id="mode-nl" class="mode-btn active">English</button>
+        <button id="mode-sql" class="mode-btn">SQL</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="query-panel">
+        <textarea id="query-input" placeholder="e.g. show me the top 5 students who scored above 80"></textarea>
+        <button id="run-btn">Run</button>
+        <div id="status" class="status"></div>
+        <div id="generated-sql" class="generated-sql"></div>
+      </section>
+
+      <section class="results-panel">
+        <div id="results-container">
+          <p class="placeholder">Results will appear here.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
