@@ -7,7 +7,6 @@ string-formatting values directly into the SQL text. This is standard
 practice (prevents SQL injection) and mysql-connector handles it natively.
 """
 
-
 def _build_where(where):
     """Returns (sql_fragment, params_list). sql_fragment has no leading 'WHERE'."""
     if where is None:
@@ -38,6 +37,13 @@ def ast_to_sql(ast):
     stmt_type = ast["type"]
     table = ast["table"]
 
+    DTYPE_TO_SQL = {"int": "INT", "float": "FLOAT", "string": "VARCHAR(255)", "bool": "BOOLEAN"}
+    if stmt_type == "CREATE_TABLE":
+        cols = ast["columns"]
+        col_defs = ", ".join(f"{c['name']} {DTYPE_TO_SQL[c['dtype']]}" for c in cols)
+        sql = f"CREATE TABLE {table} ({col_defs})"
+        return sql, ()
+
     if stmt_type == "SELECT":
         cols = ast["columns"]
         col_str = "*" if cols == ["*"] else ", ".join(cols)
@@ -61,13 +67,15 @@ def ast_to_sql(ast):
         return sql, tuple(params)
 
     elif stmt_type == "INSERT":
-        values = ast["values"]
-        cols = list(values.keys())
+        rows = ast["values"]
+        cols = list(rows[0].keys())
         placeholders = ", ".join(["%s"] * len(cols))
         col_str = ", ".join(cols)
+        # One row per execute call -- executemany-style, but keeping it simple
+        # and consistent with our single (sql, params) return shape.
         sql = f"INSERT INTO {table} ({col_str}) VALUES ({placeholders})"
-        params = tuple(values[c] for c in cols)
-        return sql, params
+        params_list = [tuple(row[c] for c in cols) for row in rows]
+        return sql, params_list  # note: now a LIST of param tuples, not one tuple
 
     elif stmt_type == "UPDATE":
         set_clause = ast["set"]

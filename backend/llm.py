@@ -7,11 +7,11 @@ before anything runs.
 
 import json
 import re
-import google.generativeai as genai
+from google import genai
 import config
 from ast_nodes import validate_ast, ASTValidationError
 
-genai.configure(api_key=config.GEMINI_API_KEY)
+client = genai.Client(api_key=config.GEMINI_API_KEY)
 
 # Describe your real schema here -- keep this in sync with your actual MySQL table(s).
 SCHEMA_DESCRIPTION = """
@@ -32,8 +32,14 @@ You must output ONLY valid JSON matching one of these exact shapes. No explanati
 SELECT:
 {{"type": "SELECT", "table": "students", "columns": ["name", "score"], "where": <condition_or_null>, "order_by": <order_or_null>, "limit": <int_or_null>}}
 
+CREATE_TABLE:
+{{"type": "CREATE_TABLE", "table": "teachers", "columns": [{{"name": "name", "dtype": "string"}}, {{"name": "age", "dtype": "int"}}]}}
+
 INSERT:
-{{"type": "INSERT", "table": "students", "values": {{"name": "Asha", "score": 88.5, "subject": "Math"}}}}
+{{"type": "INSERT", "table": "students", "values": [{{"name": "Asha", "score": 88.5, "subject": "Math"}}]}}
+
+For multiple rows, include more objects in the list:
+{{"type": "INSERT", "table": "students", "values": [{{"name": "Asha", "score": 88.5, "subject": "Math"}}, {{"name": "Rohan", "score": 76, "subject": "Math"}}]}}
 
 UPDATE:
 {{"type": "UPDATE", "table": "students", "set": {{"score": 90}}, "where": <condition_or_null>}}
@@ -52,12 +58,16 @@ An <order> looks like:
   {{"field": "score", "order": "desc"}}
 
 Rules:
-- Only use columns that exist in the schema above.
+- Only use columns that exist in the schema above for queries on the students table.
 - Use columns=["*"] for "all columns" if not specified.
 - If the question asks for "top N" or "N highest", use order_by desc on the relevant numeric column and set limit=N.
 - If the question asks for "lowest" or "bottom N", use order_by asc.
-- Only generate SELECT, INSERT, UPDATE, or DELETE. Never anything else.
+- Only generate SELECT, INSERT, UPDATE, DELETE, or CREATE_TABLE. Never anything else.
+- Valid dtypes for CREATE_TABLE: int, float, string, bool.
+- If the question asks to create a new table, use CREATE_TABLE and infer reasonable dtypes for each column based on its name (e.g. "age" -> int, "score" -> float, "name" -> string) unless the user specifies types explicitly.
 - Output ONLY the JSON object. Nothing before or after it.
+- "values" for INSERT is always a list of row objects, even for a single row.
+- All rows in one INSERT must have exactly the same set of column names.
 
 Examples:
 English: show me students who scored above 80
@@ -68,12 +78,10 @@ JSON: {{"type": "SELECT", "table": "students", "columns": ["*"], "where": null, 
 
 English: delete the student named Kabir
 JSON: {{"type": "DELETE", "table": "students", "where": {{"field": "name", "op": "=", "value": "Kabir"}}}}
-"""
 
-model = genai.GenerativeModel(
-    model_name=config.GEMINI_MODEL,
-    system_instruction=SYSTEM_PROMPT,
-)
+English: create a table called teachers with columns name, age, and department
+JSON: {{"type": "CREATE_TABLE", "table": "teachers", "columns": [{{"name": "name", "dtype": "string"}}, {{"name": "age", "dtype": "int"}}, {{"name": "department", "dtype": "string"}}]}}
+"""
 
 
 def _extract_json(text):
@@ -94,7 +102,11 @@ def english_to_ast(english_query, max_retries=2):
     prompt = english_query
 
     for attempt in range(max_retries + 1):
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=config.GEMINI_MODEL,
+            contents=prompt,
+            config={"system_instruction": SYSTEM_PROMPT},
+        )
         raw_text = _extract_json(response.text)
 
         try:

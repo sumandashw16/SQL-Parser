@@ -23,12 +23,18 @@ def run_query(sql, params):
     Runs a SQL statement with parameters.
     For SELECT: returns (columns, rows) where rows is a list of tuples.
     For INSERT/UPDATE/DELETE: returns (None, affected_row_count).
+    For multi-row INSERT, params is a list of tuples -> uses executemany.
     Raises Error on failure (caught by the caller in app.py).
     """
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute(sql, params)
+
+        is_multi_row = isinstance(params, list)
+        if is_multi_row:
+            cursor.executemany(sql, params)
+        else:
+            cursor.execute(sql, params)
 
         if sql.strip().upper().startswith("SELECT"):
             columns = [desc[0] for desc in cursor.description]

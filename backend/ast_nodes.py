@@ -45,9 +45,9 @@ DELETE
 ---------------------------------------------------------------------
 """
 
+VALID_DTYPES = {"int", "float", "string", "bool"}
 VALID_OPS = {"=", "!=", ">", "<", ">=", "<="}
-VALID_STMT_TYPES = {"SELECT", "INSERT", "UPDATE", "DELETE"}
-
+VALID_STMT_TYPES = {"SELECT", "INSERT", "UPDATE", "DELETE", "CREATE_TABLE"}
 
 class ASTValidationError(Exception):
     pass
@@ -92,10 +92,32 @@ def validate_ast(ast):
     if "table" not in ast or not isinstance(ast["table"], str) or not ast["table"]:
         _fail(f"{stmt_type}: 'table' must be a non-empty string")
 
-    if stmt_type == "INSERT":
-        values = ast.get("values")
-        if not isinstance(values, dict) or len(values) == 0:
-            _fail("INSERT: 'values' must be a non-empty object")
+        if stmt_type == "CREATE_TABLE":
+            cols = ast.get("columns")
+            if not isinstance(cols, list) or len(cols) == 0:
+                _fail("CREATE_TABLE: 'columns' must be a non-empty list")
+            seen = set()
+            for i, col in enumerate(cols):
+                if not isinstance(col, dict) or "name" not in col or "dtype" not in col:
+                    _fail(f"CREATE_TABLE.columns[{i}]: must have 'name' and 'dtype'")
+                if col["dtype"] not in VALID_DTYPES:
+                    _fail(f"CREATE_TABLE.columns[{i}]: invalid dtype '{col['dtype']}', must be one of {VALID_DTYPES}")
+                if col["name"] in seen:
+                    _fail(f"CREATE_TABLE.columns[{i}]: duplicate column name '{col['name']}'")
+                seen.add(col["name"])
+    
+        elif stmt_type == "INSERT":
+            rows = ast.get("values")
+            if not isinstance(rows, list) or len(rows) == 0:
+                _fail("INSERT: 'values' must be a non-empty list of row objects")
+            first_keys = None
+            for i, row in enumerate(rows):
+                if not isinstance(row, dict) or len(row) == 0:
+                    _fail(f"INSERT.values[{i}]: each row must be a non-empty object")
+                if first_keys is None:
+                    first_keys = set(row.keys())
+                elif set(row.keys()) != first_keys:
+                    _fail(f"INSERT.values[{i}]: all rows must have the same columns as row 0")
 
     elif stmt_type == "SELECT":
         cols = ast.get("columns")

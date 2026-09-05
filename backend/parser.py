@@ -133,6 +133,18 @@ class Parser:
             cols.append(self.expect("IDENT").value)
         self.expect("RPAREN")
         self.expect("VALUES")
+
+        rows = [self.parse_value_group(cols)]
+        while self.match("COMMA"):
+            rows.append(self.parse_value_group(cols))
+
+        return {
+            "type": "INSERT",
+            "table": table,
+            "values": rows,
+        }
+
+    def parse_value_group(self, cols):
         self.expect("LPAREN")
         vals = [self.parse_literal()]
         while self.match("COMMA"):
@@ -142,11 +154,7 @@ class Parser:
         if len(cols) != len(vals):
             raise ParseError(f"Column count ({len(cols)}) does not match value count ({len(vals)})")
 
-        return {
-            "type": "INSERT",
-            "table": table,
-            "values": dict(zip(cols, vals)),
-        }
+        return dict(zip(cols, vals))
 
     # ---- UPDATE ----
     def parse_update(self):

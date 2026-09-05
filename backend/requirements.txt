@@ -1,4 +1,4 @@
 flask
 flask-cors
 mysql-connector-python
-google-generativeai
+google-genai
