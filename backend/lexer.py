@@ -12,7 +12,7 @@ KEYWORDS = {
     "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
     "AND", "OR", "NULL",
     "ALTER", "TABLE", "ADD", "COLUMN", "DROP", "RENAME", "TO", "MODIFY",
-    "INT", "FLOAT", "STRING", "BOOL"
+    "INT", "FLOAT", "STRING", "BOOL", "SHOW", "TABLES",
 }
 
 # Order matters: longer operators must be checked before shorter ones (>= before >)

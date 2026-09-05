@@ -35,9 +35,18 @@ def ast_to_sql(ast):
     Returns (sql_string, params_tuple) ready for cursor.execute(sql, params).
     """
     stmt_type = ast["type"]
+
+    # SHOW_TABLES has no "table" field -- handle it before we ever access ast["table"]
+    if stmt_type == "SHOW_TABLES":
+        return "SHOW TABLES", ()
+
     table = ast["table"]
 
+    if stmt_type == "DROP_TABLE":
+        return f"DROP TABLE {table}", ()
+    
     DTYPE_TO_SQL = {"int": "INT", "float": "FLOAT", "string": "VARCHAR(255)", "bool": "BOOLEAN"}
+
     if stmt_type == "CREATE_TABLE":
         cols = ast["columns"]
         col_defs = ", ".join(f"{c['name']} {DTYPE_TO_SQL[c['dtype']]}" for c in cols)
@@ -65,8 +74,8 @@ def ast_to_sql(ast):
             col = ast["column"]
             sql = f"ALTER TABLE {table} MODIFY COLUMN {col['name']} {DTYPE_TO_SQL[col['dtype']]}"
             return sql, ()
-        
-    if stmt_type == "SELECT":
+
+    elif stmt_type == "SELECT":
         cols = ast["columns"]
         col_str = "*" if cols == ["*"] else ", ".join(cols)
         sql = f"SELECT {col_str} FROM {table}"

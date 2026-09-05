@@ -36,7 +36,7 @@ def run_query(sql, params):
         else:
             cursor.execute(sql, params)
 
-        if sql.strip().upper().startswith("SELECT"):
+        if sql.strip().upper().startswith(("SELECT", "SHOW")):
             columns = [desc[0] for desc in cursor.description]
             rows = cursor.fetchall()
             cursor.close()

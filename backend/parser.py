@@ -72,9 +72,17 @@ class Parser:
             stmt = self.parse_delete()
         elif tok.type == "ALTER":
             stmt = self.parse_alter()
+        elif tok.type == "SHOW":
+            stmt = self.parse_show_tables()
+        elif tok.type == "DROP":
+            stmt = self.parse_drop_table()
         else:
-            raise ParseError(f"Expected a statement (SELECT/INSERT/UPDATE/DELETE/ALTER), got {tok.type}")
+            raise ParseError(f"Expected a statement (SELECT/INSERT/UPDATE/DELETE/ALTER/SHOW), got {tok.type}")
 
+        self.match("SEMI")
+        if self.current().type != "EOF":
+            raise ParseError(f"Unexpected token after statement: {self.current().type}")
+        return stmt
     # ---- SELECT ----
     def parse_select(self):
         self.expect("SELECT")
@@ -296,6 +304,17 @@ class Parser:
             return tok.type.lower()
         raise ParseError(f"Expected a data type (INT/FLOAT/STRING/BOOL), got {tok.type}")
 
+    def parse_show_tables(self):
+        self.expect("SHOW")
+        self.expect("TABLES")
+        return {"type": "SHOW_TABLES"}
+    
+    def parse_drop_table(self):
+        self.expect("DROP")
+        self.expect("TABLE")
+        table = self.expect("IDENT").value
+        return {"type": "DROP_TABLE", "table": table}
+    
 def parse_sql(sql_text):
     """Convenience entry point: raw SQL text -> AST dict."""
     tokens = tokenize(sql_text)
