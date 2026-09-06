@@ -25,9 +25,38 @@ from app import app
 # Ensure Flask knows exactly where the frontend folder is, regardless of how it's launched
 app.static_folder = os.path.join(base_dir, 'frontend')
 
+class WindowApi:
+    def __init__(self):
+        self._window = None
+
+    def set_window(self, window):
+        self._window = window
+
+    def minimize(self):
+        if self._window:
+            self._window.minimize()
+
+    def maximize(self):
+        if self._window:
+            self._window.toggle_fullscreen()
+
+    def close(self):
+        if self._window:
+            self._window.destroy()
+
 if __name__ == '__main__':
     # Pass the Flask 'app' directly. PyWebView will automatically spawn an internal 
     # WSGI server on a random open port, avoiding port 5000 conflicts!
-    webview.create_window('MySQL-Lite Workbench', app, width=1200, height=800, background_color='#1e1e1e')
+    api = WindowApi()
+    window = webview.create_window(
+        'MySQL-Lite Workbench', 
+        app, 
+        width=1200, 
+        height=800, 
+        background_color='#1e1e1e',
+        frameless=True,
+        js_api=api
+    )
+    api.set_window(window)
     webview.start()
 

@@ -13,6 +13,13 @@ const generatedSqlDiv = document.getElementById("generated-sql");
 const resultsContainer = document.getElementById("results-container");
 const historyList    = document.getElementById("history-list");
 
+// ── Auto-resize Textarea ─────────────────────────────────────────────────────
+function autoResize() {
+  queryInput.style.height = 'auto';
+  queryInput.style.height = queryInput.scrollHeight + 'px';
+}
+queryInput.addEventListener('input', autoResize);
+
 // ── History store ────────────────────────────────────────────────────────────
 // Each entry: { query, timestamp, status, statusType, sql, columns, rows, affectedRows, isError }
 let history = JSON.parse(localStorage.getItem("sqlHistory2") || "[]");
@@ -121,6 +128,7 @@ function renderHistoryPanel() {
     // Load query into textarea
     header.querySelector(".history-cmd").addEventListener("click", () => {
       queryInput.value = entry.query;
+      autoResize();
       queryInput.focus();
       navIndex = -1;
     });
@@ -129,6 +137,7 @@ function renderHistoryPanel() {
     header.querySelector(".history-run-btn").addEventListener("click", (e) => {
       e.stopPropagation();
       queryInput.value = entry.query;
+      autoResize();
       runQuery();
     });
   });
@@ -174,6 +183,7 @@ queryInput.addEventListener("keydown", (e) => {
       navIndex--;
     }
     queryInput.value = qs[navIndex];
+    autoResize();
     setTimeout(() => queryInput.setSelectionRange(queryInput.value.length, queryInput.value.length), 0);
     return;
   }
@@ -190,6 +200,7 @@ queryInput.addEventListener("keydown", (e) => {
       navIndex = -1;
       queryInput.value = draftQuery;
     }
+    autoResize();
     setTimeout(() => queryInput.setSelectionRange(queryInput.value.length, queryInput.value.length), 0);
     return;
   }
@@ -205,6 +216,11 @@ async function runQuery(confirmed = false) {
   setStatus("Running…", "");
   generatedSqlDiv.textContent = "";
   resultsContainer.innerHTML = "";
+  
+  if (!confirmed) {
+    queryInput.value = "";
+    autoResize();
+  }
 
   const endpoint = mode === "nl" ? "/query/nl" : "/query/sql";
 
@@ -331,6 +347,27 @@ document.getElementById("clear-history-btn").addEventListener("click", () => {
 
 renderHistoryPanel();
 
+// ── Window Controls (Frameless Window) ───────────────────────────────────────
+const winMinBtn = document.getElementById("win-min");
+const winMaxBtn = document.getElementById("win-max");
+const winCloseBtn = document.getElementById("win-close");
+
+if (winMinBtn) {
+  winMinBtn.addEventListener("click", () => {
+    if (window.pywebview && window.pywebview.api) window.pywebview.api.minimize();
+  });
+}
+if (winMaxBtn) {
+  winMaxBtn.addEventListener("click", () => {
+    if (window.pywebview && window.pywebview.api) window.pywebview.api.maximize();
+  });
+}
+if (winCloseBtn) {
+  winCloseBtn.addEventListener("click", () => {
+    if (window.pywebview && window.pywebview.api) window.pywebview.api.close();
+  });
+}
+
 // ── Setup / Settings Logic ───────────────────────────────────────────────────
 const setupModal = document.getElementById("setup-modal");
 const setupSaveBtn = document.getElementById("setup-save-btn");
@@ -371,6 +408,33 @@ function showSetupModal(currentData = null) {
 
 setupCloseBtn.addEventListener("click", () => {
   setupModal.classList.add("hidden");
+});
+
+// ── Help Modal Logic ──────────────────────────────────────────────────────────
+const helpBtn = document.getElementById("help-btn");
+const helpModal = document.getElementById("help-modal");
+const helpCloseBtn = document.getElementById("help-close-btn");
+
+if (helpBtn) {
+  helpBtn.addEventListener("click", () => {
+    helpModal.classList.remove("hidden");
+  });
+}
+
+if (helpCloseBtn) {
+  helpCloseBtn.addEventListener("click", () => {
+    helpModal.classList.add("hidden");
+  });
+}
+
+// Global click to close modals
+window.addEventListener("click", (e) => {
+  if (e.target === setupModal && configLoaded) {
+    setupModal.classList.add("hidden");
+  }
+  if (e.target === helpModal) {
+    helpModal.classList.add("hidden");
+  }
 });
 
 settingsBtn.addEventListener("click", async () => {

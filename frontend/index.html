@@ -6,19 +6,33 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- Custom Titlebar for Frameless Window -->
+  <div class="custom-titlebar pywebview-drag-region">
+    <div class="titlebar-title">MySQL-Lite Workbench</div>
+    <div class="titlebar-controls">
+      <button id="win-min" class="win-btn" title="Minimize">_</button>
+      <button id="win-max" class="win-btn" title="Maximize">□</button>
+      <button id="win-close" class="win-btn win-close" title="Close">×</button>
+    </div>
+  </div>
+
   <div class="app">
     <header class="topbar">
       <h1>MySQL-Lite Workbench</h1>
       <div class="mode-toggle">
         <button id="mode-nl" class="mode-btn active">English</button>
         <button id="mode-sql" class="mode-btn">SQL</button>
+        <button id="help-btn" class="icon-btn" title="Help / Guide">❓</button>
         <button id="settings-btn" class="icon-btn" title="Settings">⚙️</button>
       </div>
     </header>
 
     <main class="main">
       <section class="query-panel">
-        <textarea id="query-input" placeholder="e.g. show me the top 5 students who scored above 80"></textarea>
+        <div class="terminal-input-wrapper">
+          <span class="prompt-symbol">&gt;</span>
+          <textarea id="query-input" placeholder="e.g. show me the top 5 students who scored above 80" rows="1"></textarea>
+        </div>
         <div class="query-hint">
           <span><kbd>Enter</kbd> to run &nbsp;·&nbsp; <kbd>Ctrl+Enter</kbd> or <kbd>Shift+Enter</kbd> for new line &nbsp;·&nbsp; <kbd>↑</kbd> <kbd>↓</kbd> to browse history</span>
         </div>
@@ -85,6 +99,21 @@
         <button id="setup-save-btn">Save & Connect</button>
       </div>
       <div id="setup-status" class="status"></div>
+    </div>
+  </div>
+
+  <div id="help-modal" class="modal hidden">
+    <div class="modal-content" style="max-height: 80vh; overflow-y: auto;">
+      <h2>How to use MySQL-Lite 🛠️</h2>
+      <p style="margin-top: 10px; line-height: 1.5; color: #a6adc8;">
+        <strong>1. Setup:</strong> Click the gear icon (⚙️) to enter your MySQL database credentials and a Google Gemini API Key. <br><br>
+        <strong>2. Toggle Modes:</strong> Use the <b>English</b> or <b>SQL</b> buttons at the top to switch between Natural Language and Typed SQL modes. <br><br>
+        <strong>3. Run Queries:</strong> Type your query and hit <kbd>Enter</kbd>. Need a new line? Use <kbd>Shift+Enter</kbd>. <br><br>
+        <strong>4. History:</strong> Use <kbd>↑</kbd> and <kbd>↓</kbd> on your keyboard to navigate through past queries.
+      </p>
+      <div class="modal-actions" style="margin-top: 20px;">
+        <button id="help-close-btn" style="background: #313244; color: #cdd6f4;">Close</button>
+      </div>
     </div>
   </div>
 

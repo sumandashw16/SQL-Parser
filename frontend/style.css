@@ -7,12 +7,69 @@ body {
   font-family: 'Segoe UI', Tahoma, sans-serif;
   background: #1e1e2e;
   color: #e0e0e0;
+  overflow: hidden; /* Prevent body scroll, we'll scroll .app if needed */
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* Custom Titlebar */
+.custom-titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #11111b; /* darker than app background */
+  height: 32px;
+  user-select: none;
+  border-bottom: 1px solid #313244;
+  flex-shrink: 0;
+}
+
+.titlebar-title {
+  font-size: 12px;
+  color: #a6adc8;
+  padding-left: 12px;
+  font-weight: 500;
+  pointer-events: none; /* Let drag events pass through */
+}
+
+.titlebar-controls {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag; /* For electron/pywebview usually the buttons shouldn't drag */
+}
+
+.win-btn {
+  background: transparent;
+  border: none;
+  color: #a6adc8;
+  width: 46px;
+  height: 100%;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.win-btn:hover {
+  background: #313244;
+  color: #cdd6f4;
+}
+
+.win-btn.win-close:hover {
+  background: #f38ba8;
+  color: #11111b;
 }
 
 .app {
   max-width: 1000px;
   margin: 0 auto;
   padding: 20px;
+  flex: 1;
+  overflow-y: auto;
+  width: 100%;
 }
 
 .topbar {
@@ -56,17 +113,52 @@ body {
   margin-bottom: 20px;
 }
 
-#query-input {
-  width: 100%;
-  height: 70px;
+.terminal-input-wrapper {
+  display: flex;
+  align-items: flex-start;
   background: #11111b;
-  color: #cdd6f4;
   border: 1px solid #45475a;
-  border-radius: 4px;
-  padding: 10px;
+  border-radius: 6px;
+  padding: 12px 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  cursor: text;
+}
+
+.terminal-input-wrapper:focus-within {
+  border-color: #89b4fa;
+  box-shadow: 0 0 8px rgba(137, 180, 250, 0.4);
+}
+
+.prompt-symbol {
+  color: #a6e3a1;
   font-family: 'Consolas', monospace;
-  font-size: 14px;
-  resize: vertical;
+  font-size: 15px;
+  font-weight: bold;
+  margin-right: 12px;
+  margin-top: 1px;
+  user-select: none;
+  text-shadow: 0 0 5px rgba(166, 227, 161, 0.5);
+  transition: text-shadow 0.2s, color 0.2s;
+}
+
+.terminal-input-wrapper:focus-within .prompt-symbol {
+  color: #00ffaa;
+  text-shadow: 0 0 12px rgba(0, 255, 170, 0.8);
+}
+
+#query-input {
+  flex: 1;
+  background: transparent;
+  color: #cdd6f4;
+  border: none;
+  outline: none;
+  font-family: 'Consolas', monospace;
+  font-size: 15px;
+  resize: none;
+  min-height: 24px;
+  overflow: hidden;
+  padding: 0;
+  line-height: 1.4;
 }
 
 /* Keyboard hint row */
@@ -89,18 +181,28 @@ body {
 }
 
 #run-btn {
-  margin-top: 10px;
-  background: #a6e3a1;
-  color: #1e1e2e;
+  margin-top: 12px;
+  background: #89b4fa;
+  color: #11111b;
   border: none;
-  padding: 8px 20px;
+  padding: 8px 24px;
   border-radius: 4px;
   cursor: pointer;
   font-weight: bold;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
+  box-shadow: 0 0 8px rgba(137, 180, 250, 0.3);
 }
 
 #run-btn:hover {
-  background: #94e2a8;
+  background: #b4befe;
+  box-shadow: 0 0 12px rgba(180, 190, 254, 0.6);
+  transform: translateY(-1px);
+}
+#run-btn:active {
+  transform: translateY(1px);
 }
 
 .status {
