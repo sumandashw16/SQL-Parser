@@ -1,12 +1,12 @@
-# MySQL-Lite: AI Database Workbench 🌌
+# MySQL-Lite: AI Database Workbench 
 
 **MySQL-Lite** is a college AI/ML lab project that bridges the gap between natural language and deterministic database querying.
 
 ![MySQL-Lite Screenshot](https://via.placeholder.com/800x450.png?text=MySQL-Lite+Terminal+Workbench)
 
 ## Documentation
-- 📖 [**Overview**](OVERVIEW.md) - Learn about the core philosophy of this project and why we built it.
-- 🛠️ [**Setup Guide**](SETUP_GUIDE.md) - Get the application running on your machine in under 2 minutes.
+-  [**Overview**](OVERVIEW.md) - Learn about the core philosophy of this project and why we built it.
+-  [**Setup Guide**](SETUP_GUIDE.md) - Get the application running on your machine in under 2 minutes.
 
 ## How We Built It
 MySQL-Lite is packaged as a sleek, standalone Windows Desktop application. Here is a breakdown of the tech stack and architecture used to bring it to life:
