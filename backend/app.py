@@ -8,7 +8,7 @@ Two endpoints:
 Both converge on the same validated AST -> ast_to_sql -> MySQL execution.
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 from lexer import LexerError
@@ -17,9 +17,42 @@ from ast_nodes import validate_ast, ASTValidationError
 from ast_to_sql import ast_to_sql
 from llm import english_to_ast
 import db
+import config
 
-app = Flask(__name__)
-CORS(app)  # allow the frontend (served separately) to call this API
+import os
+
+app = Flask(__name__, static_folder="../frontend", static_url_path="/")
+CORS(app)  # allow the frontend (served separately or via pywebview) to call this API
+
+@app.route("/")
+def index():
+    return app.send_static_file("index.html")
+
+@app.route("/<path:path>")
+def serve_static(path):
+    return send_from_directory(app.static_folder, path)
+
+@app.route("/api/settings", methods=["GET"])
+def get_settings():
+    return jsonify({
+        "MYSQL_HOST": config.MYSQL_HOST,
+        "MYSQL_PORT": config.MYSQL_PORT,
+        "MYSQL_USER": config.MYSQL_USER,
+        "MYSQL_DATABASE": config.MYSQL_DATABASE,
+        "HAS_API_KEY": bool(config.GEMINI_API_KEY),
+        "HAS_PASSWORD": bool(config.MYSQL_PASSWORD)
+    })
+
+@app.route("/api/settings", methods=["POST"])
+def update_settings():
+    data = request.get_json(force=True)
+    try:
+        config.save_settings(data)
+        return jsonify({"success": True})
+    except Exception as e:
+        if "SETUP_REQUIRED" in str(e) or "Access denied" in str(e) or "Unknown database" in str(e):
+            return jsonify({"error": f"SETUP_REQUIRED: {e}"}), 400
+        return jsonify({"error": str(e)}), 400
 
 
 def execute_ast(ast):
@@ -29,11 +62,22 @@ def execute_ast(ast):
     columns, result = db.run_query(sql, params)
 
     if columns is not None:
+        # Deduplicate column names (e.g., if two joined tables both have an 'id' column)
+        seen = {}
+        deduped_cols = []
+        for c in columns:
+            if c in seen:
+                seen[c] += 1
+                deduped_cols.append(f"{c}_{seen[c]}")
+            else:
+                seen[c] = 0
+                deduped_cols.append(c)
+                
         # SELECT: result is a list of tuples
-        rows = [dict(zip(columns, row)) for row in result]
+        rows = [dict(zip(deduped_cols, row)) for row in result]
         return {
             "sql": sql,
-            "columns": columns,
+            "columns": deduped_cols,
             "rows": rows,
             "row_count": len(rows),
         }
