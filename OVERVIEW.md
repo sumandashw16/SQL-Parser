@@ -1,4 +1,4 @@
-# Overview: MySQL-Lite 🚀
+# Overview: MySQL-Lite 
 
 ## What is this?
 **MySQL-Lite** is an AI-powered database workbench built as a college AI/ML lab project. It provides a sleek, terminal-style desktop application that allows users to interact with a real MySQL database using either **plain English** or **raw SQL**.
