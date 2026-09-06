@@ -2,11 +2,19 @@
 backend/venv/
 
 # Python cache
-__pycache__/
+**/__pycache__/
 *.pyc
 
 # Config with secrets
 backend/config.py
+
+# Build artifacts
+build/
+dist/
+*.spec
+
+# Logs
+*.log
 
 # OS/editor junk
 .DS_Store
