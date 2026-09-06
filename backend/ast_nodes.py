@@ -95,10 +95,10 @@ ALTER_TABLE (four possible actions)
 ---------------------------------------------------------------------
 """
 
-VALID_DTYPES = {"int", "float", "string", "bool"}
+VALID_DTYPES = {"int", "float", "string", "text", "bool", "date", "datetime", "timestamp"}
 VALID_OPS = {"=", "!=", ">", "<", ">=", "<="}
 VALID_AGG_FUNCS = {"COUNT", "SUM", "AVG", "MIN", "MAX"}
-VALID_STMT_TYPES = {"SELECT", "INSERT", "UPDATE", "DELETE", "CREATE_TABLE", "ALTER_TABLE", "SHOW_TABLES", "DROP_TABLE"}
+VALID_STMT_TYPES = {"SELECT", "INSERT", "UPDATE", "DELETE", "CREATE_TABLE", "ALTER_TABLE", "SHOW_TABLES", "DROP_TABLE", "DESCRIBE"}
 VALID_ALTER_ACTIONS = {"ADD_COLUMN", "DROP_COLUMN", "RENAME_COLUMN", "MODIFY_COLUMN"}
 
 
@@ -142,9 +142,11 @@ def validate_condition(cond, path="where"):
     op = cond["op"]
 
     if op in VALID_OPS:
-        # standard comparison: requires "value"
-        if "value" not in cond:
-            _fail(f"{path}: op '{op}' requires a 'value'")
+        # standard comparison: requires "value" or "right_field"
+        if "value" not in cond and "right_field" not in cond:
+            _fail(f"{path}: op '{op}' requires a 'value' or 'right_field'")
+        if "right_field" in cond and not isinstance(cond["right_field"], str):
+            _fail(f"{path}: 'right_field' must be a string")
 
     elif op == "LIKE":
         if "value" not in cond or not isinstance(cond["value"], str):
@@ -191,34 +193,52 @@ def validate_ast(ast):
                     _fail(f"CREATE_TABLE.columns[{i}]: duplicate column name '{col['name']}'")
                 seen.add(col["name"])
 
+
+
         elif stmt_type == "ALTER_TABLE":
             action = ast.get("action")
             if action not in VALID_ALTER_ACTIONS:
                 _fail(f"ALTER_TABLE: invalid action '{action}', must be one of {VALID_ALTER_ACTIONS}")
 
             if action == "ADD_COLUMN":
-                col = ast.get("column")
-                if not isinstance(col, dict) or "name" not in col or "dtype" not in col:
-                    _fail("ALTER_TABLE.ADD_COLUMN: 'column' must have 'name' and 'dtype'")
-                if col["dtype"] not in VALID_DTYPES:
-                    _fail(f"ALTER_TABLE.ADD_COLUMN: invalid dtype '{col['dtype']}', must be one of {VALID_DTYPES}")
+                cols = ast.get("columns")
+                if not isinstance(cols, list) or len(cols) == 0:
+                    _fail("ALTER_TABLE ADD_COLUMN: 'columns' must be a non-empty list")
+                for i, col in enumerate(cols):
+                    if not isinstance(col, dict) or "name" not in col or "dtype" not in col:
+                        _fail(f"ALTER_TABLE ADD_COLUMN columns[{i}]: must be an object with 'name' and 'dtype'")
+                    if col["dtype"] not in VALID_DTYPES:
+                        _fail(f"ALTER_TABLE ADD_COLUMN columns[{i}]: invalid dtype '{col['dtype']}'")
 
             elif action == "DROP_COLUMN":
-                if not isinstance(ast.get("column_name"), str) or not ast["column_name"]:
-                    _fail("ALTER_TABLE.DROP_COLUMN: 'column_name' must be a non-empty string")
+                cols = ast.get("column_names")
+                if not isinstance(cols, list) or len(cols) == 0:
+                    _fail("ALTER_TABLE DROP_COLUMN: 'column_names' must be a non-empty list of strings")
+                for i, col in enumerate(cols):
+                    if not isinstance(col, str) or not col:
+                        _fail(f"ALTER_TABLE DROP_COLUMN column_names[{i}]: must be a non-empty string")
 
             elif action == "RENAME_COLUMN":
-                if not isinstance(ast.get("old_name"), str) or not ast["old_name"]:
-                    _fail("ALTER_TABLE.RENAME_COLUMN: 'old_name' must be a non-empty string")
-                if not isinstance(ast.get("new_name"), str) or not ast["new_name"]:
-                    _fail("ALTER_TABLE.RENAME_COLUMN: 'new_name' must be a non-empty string")
+                cols = ast.get("columns")
+                if not isinstance(cols, list) or len(cols) == 0:
+                    _fail("ALTER_TABLE RENAME_COLUMN: 'columns' must be a non-empty list")
+                for i, col in enumerate(cols):
+                    if not isinstance(col, dict) or "old_name" not in col or "new_name" not in col:
+                        _fail(f"ALTER_TABLE RENAME_COLUMN columns[{i}]: must be an object with 'old_name' and 'new_name'")
+                    if not isinstance(col["old_name"], str) or not col["old_name"]:
+                        _fail(f"ALTER_TABLE RENAME_COLUMN columns[{i}]: 'old_name' must be a non-empty string")
+                    if not isinstance(col["new_name"], str) or not col["new_name"]:
+                        _fail(f"ALTER_TABLE RENAME_COLUMN columns[{i}]: 'new_name' must be a non-empty string")
 
             elif action == "MODIFY_COLUMN":
-                col = ast.get("column")
-                if not isinstance(col, dict) or "name" not in col or "dtype" not in col:
-                    _fail("ALTER_TABLE.MODIFY_COLUMN: 'column' must have 'name' and 'dtype'")
-                if col["dtype"] not in VALID_DTYPES:
-                    _fail(f"ALTER_TABLE.MODIFY_COLUMN: invalid dtype '{col['dtype']}', must be one of {VALID_DTYPES}")
+                cols = ast.get("columns")
+                if not isinstance(cols, list) or len(cols) == 0:
+                    _fail("ALTER_TABLE MODIFY_COLUMN: 'columns' must be a non-empty list")
+                for i, col in enumerate(cols):
+                    if not isinstance(col, dict) or "name" not in col or "dtype" not in col:
+                        _fail(f"ALTER_TABLE MODIFY_COLUMN columns[{i}]: must be an object with 'name' and 'dtype'")
+                    if col["dtype"] not in VALID_DTYPES:
+                        _fail(f"ALTER_TABLE MODIFY_COLUMN columns[{i}]: invalid dtype '{col['dtype']}', must be one of {VALID_DTYPES}")
 
         elif stmt_type == "INSERT":
             rows = ast.get("values")
@@ -237,6 +257,21 @@ def validate_ast(ast):
             cols = ast.get("columns")
             if not isinstance(cols, list) or len(cols) == 0:
                 _fail("SELECT: 'columns' must be a non-empty list (use ['*'] for all)")
+
+            joins = ast.get("joins")
+            if joins is not None:
+                if not isinstance(joins, list):
+                    _fail("SELECT.joins: must be a list")
+                for i, j in enumerate(joins):
+                    if not isinstance(j, dict):
+                        _fail(f"SELECT.joins[{i}]: must be an object")
+                    if j.get("type") not in ("INNER", "LEFT", "RIGHT", "INNER JOIN", "LEFT JOIN", "RIGHT JOIN"):
+                        _fail(f"SELECT.joins[{i}]: 'type' must be INNER, LEFT, or RIGHT (or include JOIN)")
+                    if "table" not in j or not isinstance(j["table"], str) or not j["table"]:
+                        _fail(f"SELECT.joins[{i}]: 'table' must be a non-empty string")
+                    if "on" not in j:
+                        _fail(f"SELECT.joins[{i}]: must have 'on' condition")
+                    validate_condition(j["on"], path=f"SELECT.joins[{i}].on")
 
             # Aggregates (optional)
             aggregates = ast.get("aggregates")
