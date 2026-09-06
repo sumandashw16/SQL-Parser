@@ -2,7 +2,8 @@
 
 **MySQL-Lite** is a project that bridges the gap between natural language and deterministic database querying.
 
-![MySQL-Lite Screenshot](https://via.placeholder.com/800x450.png?text=MySQL-Lite+Terminal+Workbench)
+<img width="1462" height="924" alt="image" src="https://github.com/user-attachments/assets/6c87d9ac-bdbe-4e79-a090-c6cfc427a219" />
+
 
 ## Documentation
 -  [**Overview**](OVERVIEW.md) - Learn about the core philosophy of this project and why we built it.
