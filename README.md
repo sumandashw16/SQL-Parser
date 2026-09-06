@@ -1,6 +1,6 @@
 # MySQL-Lite: AI Database Workbench 
 
-**MySQL-Lite** is a college AI/ML lab project that bridges the gap between natural language and deterministic database querying.
+**MySQL-Lite** is a project that bridges the gap between natural language and deterministic database querying.
 
 ![MySQL-Lite Screenshot](https://via.placeholder.com/800x450.png?text=MySQL-Lite+Terminal+Workbench)
 
