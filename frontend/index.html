@@ -62,6 +62,10 @@
       <h2>Database & API Setup</h2>
       <p>Configure your local MySQL connection and Gemini API key.</p>
       
+      <div style="background: rgba(243, 139, 168, 0.1); border: 1px solid #f38ba8; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; color: #f38ba8; line-height: 1.4;">
+        <strong>⚠️ Prerequisite:</strong> You must have MySQL installed and running on your computer. You also need to manually create an empty database (e.g., <code>CREATE DATABASE mysql_lite_project;</code>) before connecting!
+      </div>
+      
       <div class="form-group">
         <label>Gemini API Key</label>
         <input type="password" id="setup-gemini-key" placeholder="AIzaSy..." />
@@ -105,6 +109,11 @@
   <div id="help-modal" class="modal hidden">
     <div class="modal-content" style="max-height: 80vh; overflow-y: auto;">
       <h2>How to use MySQL-Lite 🛠️</h2>
+      
+      <div style="background: rgba(243, 139, 168, 0.1); border: 1px solid #f38ba8; padding: 10px; border-radius: 6px; margin-top: 15px; margin-bottom: 5px; font-size: 13px; color: #f38ba8; line-height: 1.4;">
+        <strong>⚠️ Prerequisite:</strong> You must have MySQL installed on your computer, and you must manually create a database before using this app!
+      </div>
+
       <p style="margin-top: 10px; line-height: 1.5; color: #a6adc8;">
         <strong>1. Setup:</strong> Click the gear icon (⚙️) to enter your MySQL database credentials and a Google Gemini API Key. <br><br>
         <strong>2. Toggle Modes:</strong> Use the <b>English</b> or <b>SQL</b> buttons at the top to switch between Natural Language and Typed SQL modes. <br><br>
