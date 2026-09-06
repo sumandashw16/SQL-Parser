@@ -9,13 +9,16 @@ import config
 
 
 def get_connection():
-    return mysql.connector.connect(
-        host=config.MYSQL_HOST,
-        port=config.MYSQL_PORT,
-        user=config.MYSQL_USER,
-        password=config.MYSQL_PASSWORD,
-        database=config.MYSQL_DATABASE,
-    )
+    try:
+        return mysql.connector.connect(
+            host=config.MYSQL_HOST,
+            port=config.MYSQL_PORT,
+            user=config.MYSQL_USER,
+            password=config.MYSQL_PASSWORD,
+            database=config.MYSQL_DATABASE,
+        )
+    except mysql.connector.Error as e:
+        raise ValueError(f"SETUP_REQUIRED: MySQL Connection failed - {e}")
 
 
 def run_query(sql, params):
@@ -36,7 +39,7 @@ def run_query(sql, params):
         else:
             cursor.execute(sql, params)
 
-        if sql.strip().upper().startswith(("SELECT", "SHOW")):
+        if sql.strip().upper().startswith(("SELECT", "SHOW", "DESCRIBE")):
             columns = [desc[0] for desc in cursor.description]
             rows = cursor.fetchall()
             cursor.close()

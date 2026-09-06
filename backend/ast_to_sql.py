@@ -50,6 +50,8 @@ def _build_where(where):
         return f"{field} BETWEEN %s AND %s", [where["low"], where["high"]]
 
     # Standard comparison (=, !=, >, <, >=, <=)
+    if "right_field" in where:
+        return f"{field} {op} {where['right_field']}", []
     return f"{field} {op} %s", [where["value"]]
 
 
@@ -68,8 +70,20 @@ def ast_to_sql(ast):
 
     if stmt_type == "DROP_TABLE":
         return f"DROP TABLE {table}", ()
+
+    if stmt_type == "DESCRIBE":
+        return f"DESCRIBE {table}", ()
     
-    DTYPE_TO_SQL = {"int": "INT", "float": "FLOAT", "string": "VARCHAR(255)", "bool": "BOOLEAN"}
+    DTYPE_TO_SQL = {
+        "int": "INT", 
+        "float": "FLOAT", 
+        "string": "VARCHAR(255)", 
+        "text": "TEXT",
+        "bool": "BOOLEAN",
+        "date": "DATE",
+        "datetime": "DATETIME",
+        "timestamp": "TIMESTAMP"
+    }
 
     if stmt_type == "CREATE_TABLE":
         cols = ast["columns"]
@@ -81,23 +95,21 @@ def ast_to_sql(ast):
         action = ast["action"]
 
         if action == "ADD_COLUMN":
-            col = ast["column"]
-            sql = f"ALTER TABLE {table} ADD COLUMN {col['name']} {DTYPE_TO_SQL[col['dtype']]}"
-            return sql, ()
+            cols = ast["columns"]
+            col_defs = ", ".join(f"ADD COLUMN {c['name']} {DTYPE_TO_SQL[c['dtype']]}" for c in cols)
+            return f"ALTER TABLE {table} {col_defs}", ()
 
         elif action == "DROP_COLUMN":
-            sql = f"ALTER TABLE {table} DROP COLUMN {ast['column_name']}"
-            return sql, ()
+            col_defs = ", ".join(f"DROP COLUMN {c}" for c in ast["column_names"])
+            return f"ALTER TABLE {table} {col_defs}", ()
 
         elif action == "RENAME_COLUMN":
-            # MySQL 8.0+ supports RENAME COLUMN directly
-            sql = f"ALTER TABLE {table} RENAME COLUMN {ast['old_name']} TO {ast['new_name']}"
-            return sql, ()
+            col_defs = ", ".join(f"RENAME COLUMN {c['old_name']} TO {c['new_name']}" for c in ast["columns"])
+            return f"ALTER TABLE {table} {col_defs}", ()
 
         elif action == "MODIFY_COLUMN":
-            col = ast["column"]
-            sql = f"ALTER TABLE {table} MODIFY COLUMN {col['name']} {DTYPE_TO_SQL[col['dtype']]}"
-            return sql, ()
+            col_defs = ", ".join(f"MODIFY COLUMN {c['name']} {DTYPE_TO_SQL[c['dtype']]}" for c in ast["columns"])
+            return f"ALTER TABLE {table} {col_defs}", ()
 
     elif stmt_type == "SELECT":
         cols = ast["columns"]
@@ -119,6 +131,13 @@ def ast_to_sql(ast):
         col_str = ", ".join(select_parts) if select_parts else "*"
         sql = f"SELECT {col_str} FROM {table}"
         params = []
+
+        # JOINs
+        joins = ast.get("joins")
+        if joins:
+            for j in joins:
+                frag, _ = _build_where(j["on"])
+                sql += f" {j['type']} {j['table']} ON {frag}"
 
         # WHERE (filters before grouping)
         where = ast.get("where")

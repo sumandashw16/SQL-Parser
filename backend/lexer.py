@@ -12,7 +12,10 @@ KEYWORDS = {
     "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
     "AND", "OR", "NOT", "NULL",
     "ALTER", "TABLE", "ADD", "COLUMN", "DROP", "RENAME", "TO", "MODIFY",
-    "INT", "FLOAT", "STRING", "BOOL", "SHOW", "TABLES",
+    "CREATE",
+    "JOIN", "INNER", "LEFT", "RIGHT", "ON",
+    "INT", "FLOAT", "STRING", "TEXT", "BOOL", "DATE", "DATETIME", "TIMESTAMP", "SHOW", "TABLES",
+    "DESCRIBE",
     # extended WHERE operators
     "LIKE", "IN", "BETWEEN", "IS",
     # aggregate functions + GROUP BY / HAVING
@@ -30,7 +33,7 @@ TOKEN_SPEC = [
     ("RPAREN",     r"\)"),
     ("SEMI",       r";"),
     ("STAR",       r"\*"),
-    ("IDENT",      r"[A-Za-z_][A-Za-z0-9_]*"),
+    ("IDENT",      r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*"),
 ]
 
 MASTER_PATTERN = re.compile("|".join(f"(?P<{name}>{pattern})" for name, pattern in TOKEN_SPEC))
