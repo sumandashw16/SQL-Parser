@@ -72,12 +72,12 @@ class Parser:
             stmt = self.parse_delete()
         elif tok.type == "ALTER":
             stmt = self.parse_alter()
-        elif tok.type == "SHOW":
-            stmt = self.parse_show_tables()
-        elif tok.type == "DROP":
-            stmt = self.parse_drop_table()
+        elif tok.type == "SHOW": return self.parse_show_tables()
+        elif tok.type == "DESCRIBE": return self.parse_describe()
+        elif tok.type == "CREATE": return self.parse_create_table()
+        elif tok.type == "DROP": return self.parse_drop_table()
         else:
-            raise ParseError(f"Expected a statement (SELECT/INSERT/UPDATE/DELETE/ALTER/SHOW/DROP), got {tok.type}")
+            raise ParseError(f"Expected SELECT, INSERT, UPDATE, DELETE, ALTER, SHOW, DESCRIBE, CREATE, or DROP, got {tok.type}")
 
         self.match("SEMI")
         if self.current().type != "EOF":
@@ -94,6 +94,25 @@ class Parser:
 
         self.expect("FROM")
         table = self.expect("IDENT").value
+
+        joins = []
+        while True:
+            tok = self.current()
+            join_type = None
+            if tok.type in ("INNER", "LEFT", "RIGHT"):
+                join_type = tok.type + " JOIN"
+                self.advance()
+                self.expect("JOIN")
+            elif tok.type == "JOIN":
+                join_type = "INNER JOIN"
+                self.advance()
+            else:
+                break
+                
+            join_table = self.expect("IDENT").value
+            self.expect("ON")
+            on_cond = self.parse_condition()
+            joins.append({"type": join_type, "table": join_table, "on": on_cond})
 
         where = None
         if self.match("WHERE"):
@@ -134,6 +153,8 @@ class Parser:
             "order_by": order_by,
             "limit": limit,
         }
+        if joins:
+            result["joins"] = joins
         if aggregates:
             result["aggregates"] = aggregates
         if group_by:
@@ -345,8 +366,15 @@ class Parser:
 
         # Standard comparison  (=, !=, >, <, >=, <=)
         op_tok = self.expect("OP")
-        value = self.parse_literal()
-        cond = {"field": field, "op": op_tok.value, "value": value}
+        
+        tok = self.current()
+        if tok.type == "IDENT":
+            right_field = self.expect("IDENT").value
+            cond = {"field": field, "op": op_tok.value, "right_field": right_field}
+        else:
+            value = self.parse_literal()
+            cond = {"field": field, "op": op_tok.value, "value": value}
+            
         return {"not": cond} if negate else cond
 
 
@@ -368,48 +396,82 @@ class Parser:
         table = self.expect("IDENT").value
 
         if self.match("ADD"):
-            self.match("COLUMN")  # optional keyword
-            col_name = self.expect("IDENT").value
-            dtype = self.parse_dtype()
+            self.match("COLUMN")
+            
+            cols = []
+            while True:
+                col_name = self.expect("IDENT").value
+                dtype = self.parse_dtype()
+                cols.append({"name": col_name, "dtype": dtype})
+                
+                if self.match("COMMA"):
+                    if self.match("ADD"):
+                        self.match("COLUMN")
+                else:
+                    break
+
             return {
                 "type": "ALTER_TABLE",
                 "table": table,
                 "action": "ADD_COLUMN",
-                "column": {"name": col_name, "dtype": dtype},
+                "columns": cols
             }
 
         elif self.match("DROP"):
-            self.match("COLUMN")  # optional keyword
-            col_name = self.expect("IDENT").value
+            self.match("COLUMN")
+            cols = []
+            while True:
+                col_name = self.expect("IDENT").value
+                cols.append(col_name)
+                if self.match("COMMA"):
+                    if self.match("DROP"):
+                        self.match("COLUMN")
+                else:
+                    break
             return {
                 "type": "ALTER_TABLE",
                 "table": table,
                 "action": "DROP_COLUMN",
-                "column_name": col_name,
+                "column_names": cols,
             }
 
         elif self.match("RENAME"):
-            self.match("COLUMN")  # optional keyword
-            old_name = self.expect("IDENT").value
-            self.expect("TO")
-            new_name = self.expect("IDENT").value
+            self.match("COLUMN")
+            cols = []
+            while True:
+                old_name = self.expect("IDENT").value
+                self.expect("TO")
+                new_name = self.expect("IDENT").value
+                cols.append({"old_name": old_name, "new_name": new_name})
+                if self.match("COMMA"):
+                    if self.match("RENAME"):
+                        self.match("COLUMN")
+                else:
+                    break
             return {
                 "type": "ALTER_TABLE",
                 "table": table,
                 "action": "RENAME_COLUMN",
-                "old_name": old_name,
-                "new_name": new_name,
+                "columns": cols,
             }
 
         elif self.match("MODIFY"):
-            self.match("COLUMN")  # optional keyword
-            col_name = self.expect("IDENT").value
-            dtype = self.parse_dtype()
+            self.match("COLUMN")
+            cols = []
+            while True:
+                col_name = self.expect("IDENT").value
+                dtype = self.parse_dtype()
+                cols.append({"name": col_name, "dtype": dtype})
+                if self.match("COMMA"):
+                    if self.match("MODIFY"):
+                        self.match("COLUMN")
+                else:
+                    break
             return {
                 "type": "ALTER_TABLE",
                 "table": table,
                 "action": "MODIFY_COLUMN",
-                "column": {"name": col_name, "dtype": dtype},
+                "columns": cols,
             }
 
         else:
@@ -417,16 +479,43 @@ class Parser:
 
     def parse_dtype(self):
         tok = self.current()
-        if tok.type in ("INT", "FLOAT", "STRING", "BOOL"):
+        if tok.type in ("INT", "FLOAT", "STRING", "TEXT", "BOOL", "DATE", "DATETIME", "TIMESTAMP"):
             self.advance()
             return tok.type.lower()
-        raise ParseError(f"Expected a data type (INT/FLOAT/STRING/BOOL), got {tok.type}")
+        raise ParseError(f"Expected a data type, got {tok.type}")
 
     def parse_show_tables(self):
         self.expect("SHOW")
         self.expect("TABLES")
         return {"type": "SHOW_TABLES"}
+
+    def parse_describe(self):
+        self.expect("DESCRIBE")
+        table = self.expect("IDENT").value
+        return {"type": "DESCRIBE", "table": table}
     
+    def parse_create_table(self):
+        self.expect("CREATE")
+        self.expect("TABLE")
+        table = self.expect("IDENT").value
+        self.expect("LPAREN")
+        
+        columns = []
+        while True:
+            col_name = self.expect("IDENT").value
+            dtype = self.parse_dtype()
+            columns.append({"name": col_name, "dtype": dtype})
+            if not self.match("COMMA"):
+                break
+                
+        self.expect("RPAREN")
+        
+        return {
+            "type": "CREATE_TABLE",
+            "table": table,
+            "columns": columns
+        }
+
     def parse_drop_table(self):
         self.expect("DROP")
         self.expect("TABLE")

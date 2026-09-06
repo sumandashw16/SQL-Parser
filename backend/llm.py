@@ -13,7 +13,19 @@ from google import genai
 import config
 from ast_nodes import validate_ast, ASTValidationError
 
-client = genai.Client(api_key=config.GEMINI_API_KEY)
+_client = None
+_client_api_key = None
+
+def get_client():
+    global _client, _client_api_key
+    if not config.GEMINI_API_KEY:
+        raise ValueError("SETUP_REQUIRED: Missing Gemini API Key")
+    
+    if _client is None or _client_api_key != config.GEMINI_API_KEY:
+        _client = genai.Client(api_key=config.GEMINI_API_KEY)
+        _client_api_key = config.GEMINI_API_KEY
+        
+    return _client
 
 # Describe your real schema here -- keep this in sync with your actual MySQL table(s).
 def build_system_prompt():
@@ -29,17 +41,20 @@ Current database schema:
 
 You must output ONLY valid JSON matching one of these exact shapes. No explanation, no markdown, no code fences, no extra text -- just the raw JSON object.
 
-SELECT:
+SELECT (plain):
 {{"type": "SELECT", "table": "students", "columns": ["name", "score"], "where": <condition_or_null>, "order_by": <order_or_null>, "limit": <int_or_null>}}
+
+SELECT with JOINs:
+{{"type": "SELECT", "table": "students", "joins": [{{"type": "INNER JOIN", "table": "courses", "on": {{"field": "students.course_id", "op": "=", "right_field": "courses.id"}}}}], "columns": ["students.name", "courses.title"], "where": <condition_or_null>, "order_by": <order_or_null>, "limit": <int_or_null>}}
 
 CREATE_TABLE:
 {{"type": "CREATE_TABLE", "table": "teachers", "columns": [{{"name": "name", "dtype": "string"}}, {{"name": "age", "dtype": "int"}}]}}
 
 ALTER_TABLE (four possible actions):
-{{"type": "ALTER_TABLE", "table": "teachers", "action": "ADD_COLUMN", "column": {{"name": "email", "dtype": "string"}}}}
-{{"type": "ALTER_TABLE", "table": "teachers", "action": "DROP_COLUMN", "column_name": "email"}}
-{{"type": "ALTER_TABLE", "table": "teachers", "action": "RENAME_COLUMN", "old_name": "dept", "new_name": "department"}}
-{{"type": "ALTER_TABLE", "table": "teachers", "action": "MODIFY_COLUMN", "column": {{"name": "age", "dtype": "float"}}}}
+{{"type": "ALTER_TABLE", "table": "teachers", "action": "ADD_COLUMN", "columns": [{{"name": "email", "dtype": "string"}}, {{"name": "phone", "dtype": "string"}}]}}
+{{"type": "ALTER_TABLE", "table": "teachers", "action": "DROP_COLUMN", "column_names": ["age", "department"]}}
+{{"type": "ALTER_TABLE", "table": "teachers", "action": "RENAME_COLUMN", "columns": [{{"old_name": "age", "new_name": "years"}}]}}
+{{"type": "ALTER_TABLE", "table": "teachers", "action": "MODIFY_COLUMN", "columns": [{{"name": "age", "dtype": "float"}}]}}
 
 INSERT:
 {{"type": "INSERT", "table": "students", "values": [{{"name": "Asha", "score": 88.5, "subject": "Math"}}]}}
@@ -53,17 +68,23 @@ UPDATE:
 DELETE:
 {{"type": "DELETE", "table": "students", "where": <condition_or_null>}}
 
-SHOW_TABLES (no table field needed -- lists all tables in the database):
+SHOW_TABLES:
 {{"type": "SHOW_TABLES"}}
 
-DROP_TABLE (deletes an entire table, not just rows):
+DESCRIBE (see all columns/schema of a table):
+{{"type": "DESCRIBE", "table": "students"}}
+
+DROP_TABLE: (deletes an entire table, not just rows):
 {{"type": "DROP_TABLE", "table": "panihouse"}}
 
 A <condition> is one of:
 
-  Standard comparison:
+  Standard comparison (value):
   {{"field": "score", "op": ">", "value": 80}}
   Valid ops: = != > < >= <=
+
+  Field-to-field comparison (e.g., for JOINs):
+  {{"field": "students.course_id", "op": "=", "right_field": "courses.id"}}
 
   LIKE  (use % as wildcard):
   {{"field": "name", "op": "LIKE", "value": "%ali%"}}
@@ -91,12 +112,15 @@ An <order> looks like:
 Rules:
 - Only use tables and columns that exist in the schema above.
 - Use columns=["*"] for "all columns" if not specified.
+- For queries involving relationships or matching data across tables, use the optional "joins" array (types: INNER JOIN, LEFT JOIN, RIGHT JOIN).
+- When using JOINs, ALWAYS fully qualify column names (e.g. "table.column" instead of "column") in 'columns', 'where', 'group_by', 'having', and 'order_by' to prevent ambiguity errors.
 - If the question asks for "top N" or "N highest", use order_by desc on the relevant numeric column and set limit=N.
 - If the question asks for "lowest" or "bottom N", use order_by asc.
-- Valid dtypes for CREATE_TABLE: int, float, string, bool.
-- If the question asks to create a new table, use CREATE_TABLE and infer reasonable dtypes for each column based on its name (e.g. "age" -> int, "score" -> float, "name" -> string) unless the user specifies types explicitly.
+- Valid dtypes for CREATE_TABLE: int, float, string, text, bool, date, datetime, timestamp.
+- If the question asks to create a new table, use CREATE_TABLE and infer reasonable dtypes for each column based on its name (e.g. "age" -> int, "score" -> float, "name" -> string, "created_at" -> timestamp, "dob" -> date) unless the user specifies types explicitly.
 - "values" for INSERT is always a list of row objects, even for a single row.
 - All rows in one INSERT must have exactly the same set of column names.
+- If the user asks to see all columns, schema, or structure of a table, use the DESCRIBE command.
 - Output ONLY the JSON object. Nothing before or after it.
 - Only generate SELECT, INSERT, UPDATE, DELETE, CREATE_TABLE, ALTER_TABLE, SHOW_TABLES, or DROP_TABLE. Never anything else.
 - If the question asks to delete/drop/remove an entire TABLE (not rows), use DROP_TABLE, never DELETE. DELETE only removes rows from within a table.
@@ -105,6 +129,7 @@ Rules:
 - Use "having" (not "where") to filter on aggregate results (e.g. "groups where average score > 70").
 - "field": "*" is only valid inside COUNT. All other functions (SUM, AVG, MIN, MAX) must reference a real column name.
 - If no grouping is needed (e.g. just "count all rows"), omit "group_by" and use "columns": ["*"].
+- Subqueries are explicitly NOT supported. To find records missing from another table (e.g., 'riders who have never made a delivery'), do NOT use a NOT IN clause. Instead, use a LEFT JOIN and add an IS_NULL condition on the joined table's primary key.
 
 Examples:
 English: show me students who scored above 80
@@ -166,6 +191,9 @@ JSON: {{"type": "SELECT", "table": "students", "columns": ["subject"], "aggregat
 
 English: total number of students
 JSON: {{"type": "SELECT", "table": "students", "columns": ["*"], "aggregates": [{{"func": "COUNT", "field": "*", "alias": "total"}}], "where": null, "group_by": null, "having": null, "order_by": null, "limit": null}}
+
+English: show me students and their associated course titles using an inner join
+JSON: {{"type": "SELECT", "table": "students", "joins": [{{"type": "INNER JOIN", "table": "courses", "on": {{"field": "students.course_id", "op": "=", "right_field": "courses.id"}}}}], "columns": ["students.name", "courses.title"], "where": null, "order_by": null, "limit": null}}
 """
 
 
@@ -188,7 +216,7 @@ def english_to_ast(english_query, max_retries=2):
     prompt = english_query
 
     for attempt in range(max_retries + 1):
-        response = client.models.generate_content(
+        response = get_client().models.generate_content(
             model=config.GEMINI_MODEL,
             contents=prompt,
             config={"system_instruction": build_system_prompt()},
@@ -199,7 +227,7 @@ def english_to_ast(english_query, max_retries=2):
             ast = json.loads(raw_text)
         except json.JSONDecodeError as e:
             last_error = f"Model did not return valid JSON: {e}. Raw output: {raw_text}"
-            prompt = f"{english_query}\n\nYour previous output was not valid JSON. Error: {last_error}\nRespond with ONLY the corrected JSON object."
+            prompt = f"{nl_query}\n\nYour previous output was not valid JSON. Error: {last_error}\nRespond with ONLY the corrected JSON object."
             continue
 
         try:
@@ -207,7 +235,7 @@ def english_to_ast(english_query, max_retries=2):
             return ast
         except ASTValidationError as e:
             last_error = str(e)
-            prompt = f"{english_query}\n\nYour previous JSON was invalid: {last_error}\nRespond with ONLY the corrected JSON object."
+            prompt = f"{nl_query}\n\nYour previous JSON was invalid: {last_error}\nRespond with ONLY the corrected JSON object."
             continue
 
     raise ValueError(f"Failed to get valid AST after {max_retries + 1} attempts. Last error: {last_error}")
