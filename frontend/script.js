@@ -1,4 +1,6 @@
-const API_BASE = "http://127.0.0.1:5000";
+// If running directly from the file system, fallback to 5000.
+// Otherwise (Flask/PyWebView), use relative paths to support random ports.
+const API_BASE = window.location.protocol === "file:" ? "http://127.0.0.1:5000" : "";
 
 let mode = "nl"; // "nl" or "sql"
 
@@ -328,3 +330,122 @@ document.getElementById("clear-history-btn").addEventListener("click", () => {
 });
 
 renderHistoryPanel();
+
+// ── Setup / Settings Logic ───────────────────────────────────────────────────
+const setupModal = document.getElementById("setup-modal");
+const setupSaveBtn = document.getElementById("setup-save-btn");
+const setupCloseBtn = document.getElementById("setup-close-btn");
+const settingsBtn = document.getElementById("settings-btn");
+const setupStatus = document.getElementById("setup-status");
+
+async function checkSettings() {
+  try {
+    const res = await fetch(`${API_BASE}/api/settings`);
+    if (res.ok) {
+      const data = await res.json();
+      if (!data.HAS_API_KEY || !data.HAS_PASSWORD) {
+        showSetupModal(data);
+      }
+    }
+  } catch (e) {
+    console.error("Failed to check settings on load", e);
+  }
+}
+
+function showSetupModal(currentData = null) {
+  setupModal.classList.remove("hidden");
+  setupStatus.textContent = "";
+  if (currentData) {
+    document.getElementById("setup-mysql-host").value = currentData.MYSQL_HOST || "localhost";
+    document.getElementById("setup-mysql-port").value = currentData.MYSQL_PORT || 3306;
+    document.getElementById("setup-mysql-user").value = currentData.MYSQL_USER || "root";
+    document.getElementById("setup-mysql-database").value = currentData.MYSQL_DATABASE || "mysql_lite_project";
+    
+    if (currentData.HAS_API_KEY && currentData.HAS_PASSWORD) {
+      setupCloseBtn.classList.remove("hidden");
+    } else {
+      setupCloseBtn.classList.add("hidden");
+    }
+  }
+}
+
+setupCloseBtn.addEventListener("click", () => {
+  setupModal.classList.add("hidden");
+});
+
+settingsBtn.addEventListener("click", async () => {
+  try {
+    const res = await fetch(`${API_BASE}/api/settings`);
+    if (res.ok) {
+      const data = await res.json();
+      showSetupModal(data);
+    }
+  } catch (e) {
+    showSetupModal({});
+  }
+});
+
+setupSaveBtn.addEventListener("click", async () => {
+  const geminiKey = document.getElementById("setup-gemini-key").value.trim();
+  const host = document.getElementById("setup-mysql-host").value.trim();
+  const port = document.getElementById("setup-mysql-port").value.trim();
+  const user = document.getElementById("setup-mysql-user").value.trim();
+  const pass = document.getElementById("setup-mysql-password").value;
+  const db = document.getElementById("setup-mysql-database").value.trim();
+
+  if (!host || !user || !db) {
+    setupStatus.textContent = "Please fill in all MySQL fields.";
+    setupStatus.className = "status error";
+    return;
+  }
+
+  const payload = {
+    MYSQL_HOST: host,
+    MYSQL_PORT: port,
+    MYSQL_USER: user,
+    MYSQL_DATABASE: db
+  };
+  
+  if (geminiKey) payload.GEMINI_API_KEY = geminiKey;
+  if (pass) payload.MYSQL_PASSWORD = pass;
+
+  setupSaveBtn.disabled = true;
+  setupStatus.textContent = "Saving...";
+  setupStatus.className = "status loading";
+
+  try {
+    const res = await fetch(`${API_BASE}/api/settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    
+    const data = await res.json();
+    
+    if (data.error && String(data.error).includes("SETUP_REQUIRED")) {
+      setStatus("Setup required. Please configure your settings.", "error");
+      checkSettings(); // this will pop open the modal
+      return;
+    }
+
+    if (res.ok) {
+      setupStatus.textContent = "Setup complete! Workbench ready.";
+      setupStatus.className = "status success";
+      setTimeout(() => {
+        setupModal.classList.add("hidden");
+        setupSaveBtn.disabled = false;
+      }, 1000);
+    } else {
+      setupStatus.textContent = "Setup error: " + (data.error || "Unknown error");
+      setupStatus.className = "status error";
+      setupSaveBtn.disabled = false;
+    }
+  } catch (e) {
+    setupStatus.textContent = "Network error while saving settings.";
+    setupStatus.className = "status error";
+    setupSaveBtn.disabled = false;
+  }
+});
+
+// Run check on load
+checkSettings();

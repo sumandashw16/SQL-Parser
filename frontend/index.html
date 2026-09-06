@@ -12,6 +12,7 @@
       <div class="mode-toggle">
         <button id="mode-nl" class="mode-btn active">English</button>
         <button id="mode-sql" class="mode-btn">SQL</button>
+        <button id="settings-btn" class="icon-btn" title="Settings">⚙️</button>
       </div>
     </header>
 
@@ -40,6 +41,51 @@
         <ul id="history-list" class="history-list"></ul>
       </section>
     </main>
+  </div>
+
+  <div id="setup-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2>Database & API Setup</h2>
+      <p>Configure your local MySQL connection and Gemini API key.</p>
+      
+      <div class="form-group">
+        <label>Gemini API Key</label>
+        <input type="password" id="setup-gemini-key" placeholder="AIzaSy..." />
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>MySQL Host</label>
+          <input type="text" id="setup-mysql-host" value="localhost" />
+        </div>
+        <div class="form-group">
+          <label>MySQL Port</label>
+          <input type="number" id="setup-mysql-port" value="3306" />
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>MySQL User</label>
+          <input type="text" id="setup-mysql-user" value="root" />
+        </div>
+        <div class="form-group">
+          <label>MySQL Password</label>
+          <input type="password" id="setup-mysql-password" placeholder="Database password" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>MySQL Database</label>
+        <input type="text" id="setup-mysql-database" value="mysql_lite_project" />
+      </div>
+
+      <div class="modal-actions">
+        <button id="setup-close-btn" class="hidden">Cancel</button>
+        <button id="setup-save-btn">Save & Connect</button>
+      </div>
+      <div id="setup-status" class="status"></div>
+    </div>
   </div>
 
   <script src="script.js"></script>
